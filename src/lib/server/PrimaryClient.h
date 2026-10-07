@@ -139,6 +139,16 @@ public:
     return true;
   }
 
+  PeerPlatform getPlatform() const override
+  {
+    return localPlatform();
+  }
+
+  bool isHopflow() const override
+  {
+    return true;
+  }
+
 private:
   deskflow::Computer *m_computer;
   bool m_clipboardDirty[kClipboardEnd] = {false, false};

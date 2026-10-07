@@ -42,10 +42,42 @@ static const int16_t kProtocolMajorVersion = 1;
  * The minor version indicates feature availability within the same major version.
  * Higher minor versions are backward compatible with lower minor versions.
  *
+ * Hopflow advertises its own minor version, far above upstream Deskflow's, so a
+ * future upstream 1.9 can never be mistaken for the Hopflow protocol. Peers that
+ * only speak upstream versions negotiate down to kUpstreamProtocolMinorVersion
+ * or lower, which disables the Hopflow messages.
+ *
  * @note When incrementing the minor version, the Deskflow application version should also increment
  * @since Protocol version 1.0
  */
-static const int16_t kProtocolMinorVersion = 8;
+static const int16_t kProtocolMinorVersion = 100;
+
+/**
+ * @brief Newest upstream Deskflow protocol minor version this build implements
+ *
+ * A client that sees a server minor version above this but below
+ * kProtocolMinorVersion is talking to a newer upstream Deskflow, and replies
+ * with this version instead.
+ *
+ * @since Hopflow protocol 1.100
+ */
+static const int16_t kUpstreamProtocolMinorVersion = 8;
+
+/**
+ * @brief Minor version a client replies with to a server announcing \p serverMinor
+ *
+ * Hopflow servers get the Hopflow version, older servers their own version,
+ * and newer upstream servers the newest upstream version this build implements.
+ *
+ * @since Hopflow protocol 1.100
+ */
+constexpr int16_t clientProtocolMinorVersion(int16_t serverMinor)
+{
+  if (serverMinor >= kProtocolMinorVersion) {
+    return kProtocolMinorVersion;
+  }
+  return serverMinor < kUpstreamProtocolMinorVersion ? serverMinor : kUpstreamProtocolMinorVersion;
+}
 
 /**
  * @brief Default TCP port for Deskflow connections
@@ -177,6 +209,62 @@ enum class TransferState : uint8_t
   Finished,   ///< Reception completed successfully
   Oversize,   ///< Declared size over the limit, chunks are discarded
   Error       ///< Reception failed with error
+};
+
+/**
+ * @brief Operating system of a peer
+ *
+ * Sent by Hopflow clients in kMsgHPlatform so the server can adapt behavior
+ * per platform pair, such as swapping Ctrl and Cmd between macOS and others.
+ *
+ * @since Hopflow protocol 1.100
+ */
+enum class PeerPlatform : uint8_t
+{
+  Unknown = 0,
+  Windows = 1,
+  MacOS = 2,
+  Linux = 3,
+  Other = 4
+};
+
+/**
+ * @brief Platform of the running build
+ */
+constexpr PeerPlatform localPlatform()
+{
+#if defined(_WIN32)
+  return PeerPlatform::Windows;
+#elif defined(__APPLE__)
+  return PeerPlatform::MacOS;
+#elif defined(__linux__)
+  return PeerPlatform::Linux;
+#else
+  return PeerPlatform::Other;
+#endif
+}
+
+/**
+ * @brief Purpose of a file transfer, which decides where received files go
+ *
+ * @since Hopflow protocol 1.100
+ */
+enum class FileTransferPurpose : uint8_t
+{
+  Drop = 0,     ///< Dragged across the edge; saved to the downloads folder and revealed
+  Clipboard = 1 ///< Copied files; staged and put on the receiver's clipboard
+};
+
+/**
+ * @brief Final status of a file transfer
+ *
+ * @since Hopflow protocol 1.100
+ */
+enum class FileTransferStatus : uint8_t
+{
+  Ok = 0,
+  Cancelled = 1,
+  Error = 2
 };
 
 /** @} */ // end of protocol_enums group
@@ -1163,6 +1251,145 @@ extern const char *const kMsgDSecureInputNotification;
 extern const char *const kMsgDLanguageSynchronisation;
 
 /** @} */ // end of protocol_system group
+
+/**
+ * @defgroup protocol_hopflow Hopflow Messages
+ * @brief Messages only exchanged when both peers negotiated Hopflow protocol 1.100
+ *
+ * All Hopflow message codes start with `H` so they never collide with upstream
+ * codes. Sending one to a peer that negotiated a lower version would make it
+ * discard the rest of the stream, so every sender checks the version first.
+ * @{
+ */
+
+/**
+ * @brief Client platform
+ *
+ * **Message Code**: `"HPLT"`
+ * **Direction**: Secondary → Primary
+ * **Format**: `"HPLT%1i"`
+ * **Parameters**:
+ * - `$1`: PeerPlatform value
+ *
+ * Sent in reply to kMsgQInfo, immediately before kMsgDInfo, so the server
+ * knows the client platform before it sends options.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHPlatform;
+
+/**
+ * @brief File offer
+ *
+ * **Message Code**: `"HFOF"`
+ * **Direction**: Secondary → Primary
+ * **Format**: `"HFOF%1i%s"`
+ * **Parameters**:
+ * - `$1`: FileTransferPurpose
+ * - `$2`: Newline separated, absolute local paths on the offering computer.
+ *         Empty to withdraw the offer.
+ *
+ * Tells the server that files are available to send, either because they were
+ * copied to the clipboard or because they are being dragged. The server decides
+ * when and to whom they are sent with kMsgHFileRequest.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileOffer;
+
+/**
+ * @brief File request
+ *
+ * **Message Code**: `"HFRQ"`
+ * **Direction**: Primary → Secondary
+ * **Format**: `"HFRQ%4i%1i%s"`
+ * **Parameters**:
+ * - `$1`: Transfer ID, chosen by the server
+ * - `$2`: FileTransferPurpose
+ * - `$3`: Newline separated paths, as offered with kMsgHFileOffer
+ *
+ * Asks the offering computer to start sending the files as transfer `$1`.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileRequest;
+
+/**
+ * @brief File transfer start
+ *
+ * **Message Code**: `"HFST"`
+ * **Direction**: Both
+ * **Format**: `"HFST%4i%1i%s"`
+ * **Parameters**:
+ * - `$1`: Transfer ID
+ * - `$2`: FileTransferPurpose
+ * - `$3`: Manifest, a JSON array of `{"path": "<relative path>", "size": <bytes>}`
+ *
+ * File contents follow as kMsgHFileChunk messages, in manifest order, with the
+ * files concatenated. The server relays the transfer when neither end is the
+ * server computer.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileStart;
+
+/**
+ * @brief File transfer data
+ *
+ * **Message Code**: `"HFCH"`
+ * **Direction**: Both
+ * **Format**: `"HFCH%4i%s"`
+ * **Parameters**:
+ * - `$1`: Transfer ID
+ * - `$2`: Up to kFileTransferChunkSize bytes of file content
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileChunk;
+
+/**
+ * @brief File transfer acknowledgement
+ *
+ * **Message Code**: `"HFAK"`
+ * **Direction**: Both (receiver → sender)
+ * **Format**: `"HFAK%4i%4i"`
+ * **Parameters**:
+ * - `$1`: Transfer ID
+ * - `$2`: Number of chunks received so far
+ *
+ * Senders keep at most kFileTransferWindow chunks unacknowledged.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileAck;
+
+/**
+ * @brief File transfer end
+ *
+ * **Message Code**: `"HFEN"`
+ * **Direction**: Both
+ * **Format**: `"HFEN%4i%1i"`
+ * **Parameters**:
+ * - `$1`: Transfer ID
+ * - `$2`: FileTransferStatus
+ *
+ * Sent by the sender when all chunks are sent, or by either end to cancel.
+ *
+ * @since Hopflow protocol 1.100
+ */
+extern const char *const kMsgHFileEnd;
+
+/**
+ * @brief Size of one file transfer chunk in bytes
+ */
+static constexpr uint32_t kFileTransferChunkSize = 256 * 1024;
+
+/**
+ * @brief Number of unacknowledged chunks a sender may have in flight
+ */
+static constexpr uint32_t kFileTransferWindow = 32;
+
+/** @} */ // end of protocol_hopflow group
 
 /** @} */ // end of protocol_data group
 

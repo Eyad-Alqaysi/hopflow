@@ -53,3 +53,11 @@ const char *const kMsgEIncompatible = "EICV%2i%2i";
 const char *const kMsgEBusy = "EBSY";
 const char *const kMsgEUnknown = "EUNK";
 const char *const kMsgEBad = "EBAD";
+
+const char *const kMsgHPlatform = "HPLT%1i";
+const char *const kMsgHFileOffer = "HFOF%1i%s";
+const char *const kMsgHFileRequest = "HFRQ%4i%1i%s";
+const char *const kMsgHFileStart = "HFST%4i%1i%s";
+const char *const kMsgHFileChunk = "HFCH%4i%s";
+const char *const kMsgHFileAck = "HFAK%4i%4i";
+const char *const kMsgHFileEnd = "HFEN%4i%1i";

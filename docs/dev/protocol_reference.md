@@ -292,6 +292,29 @@ A modifier (modifier mask) represents the state of modifier keys (like Shift, Co
 | **1.6** | Jan 2014 | Synergy | Clipboard streaming | 1.6+ |
 | **1.7** | Sep 2021 | Synergy | Secure input notifications | 1.7+ |
 | **1.8** | Nov 2021 | Synergy | Language synchronization | 1.8+ |
+| **1.100** | Oct 2026 | Hopflow | Client platform, file transfer (see below) | Hopflow only |
+
+### Hopflow Protocol (1.100)
+
+Hopflow advertises minor version 100 instead of the next upstream number, so a
+future upstream 1.9 is never confused with it. A Hopflow client that sees a
+server minor version between 9 and 99 is talking to a newer upstream Deskflow
+and replies with 1.8 (see `clientProtocolMinorVersion()`). A Deskflow client
+negotiates down to its own version as usual. Hopflow messages are only sent
+once both ends negotiated 1.100.
+
+| Code | Constant | Direction | Purpose |
+|------|----------|-----------|---------|
+| **HPLT** | @ref kMsgHPlatform | Client→Server | Client operating system, sent before `DINF` |
+| **HFOF** | @ref kMsgHFileOffer | Client→Server | Files are available (copied or dragged) |
+| **HFRQ** | @ref kMsgHFileRequest | Server→Client | Send the offered files as a transfer |
+| **HFST** | @ref kMsgHFileStart | Both | Transfer start with JSON manifest |
+| **HFCH** | @ref kMsgHFileChunk | Both | File content |
+| **HFAK** | @ref kMsgHFileAck | Both | Flow-control acknowledgement |
+| **HFEN** | @ref kMsgHFileEnd | Both | Transfer finished or cancelled |
+
+The server routes transfers: it relays `HFST`/`HFCH`/`HFEN` from the sending
+computer to the receiving one, and `HFAK` back.
 
 ### Version Migration Guide
 
