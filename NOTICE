@@ -1,0 +1,24 @@
+Hopflow
+Copyright (C) 2026 Hopflow Contributors
+
+Hopflow is built on top of Deskflow (https://github.com/deskflow/deskflow),
+the open-source keyboard and mouse sharing application, and is distributed
+under the same license: GNU General Public License v2.0 only, with the
+OpenSSL exception (see LICENSE and LICENSES/).
+
+Deskflow and its predecessors are the work of many people, including:
+
+  Copyright (C) 2024-2026 Deskflow Devs
+  Copyright (C) 2024-2026 Chris Rizzitello
+  Copyright (C) 2012-2025 Synergy App Ltd (Symless)
+  Copyright (C) 2009-2012 Nick Bolton
+  Copyright (C) 2002-2009 Chris Schoeneman
+  Copyright (C) 2008 Volker Lanz
+  and the Barrier and Input Leap contributors.
+
+Per-file copyright and license information is preserved in each source
+file's SPDX header and in REUSE.toml. Hopflow's changes are recorded in the
+git history of https://github.com/Eyad-Alqaysi/hopflow.
+
+"Deskflow" is the name of the upstream project. Hopflow is an independent
+fork and is not affiliated with or endorsed by the Deskflow project.

@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: MIT
 
 if(APPLE)
-  set(target Deskflow)
+  set(target ${CMAKE_PROJECT_PROPER_NAME})
 else()
-  set(target deskflow)
+  string(TOLOWER "${CMAKE_PROJECT_PROPER_NAME}" target)
 endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -31,7 +31,7 @@ elseif(BUILD_OSX_BUNDLE)
     @ONLY
   )
 
-  set(platform_extra ../res/Deskflow.icns)
+  set(platform_extra ../res/Hopflow.icns)
   set_source_files_properties(${platform_extra} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 endif()
 
