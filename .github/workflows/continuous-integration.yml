@@ -242,6 +242,9 @@ jobs:
     needs: ci-passed
     if: (github.ref == 'refs/heads/main') || (contains(github.ref, '/tags/v'))
     runs-on: ubuntu-latest
+    # forks get a read-only token unless the job asks for more
+    permissions:
+      contents: write
 
     steps:
       - name: Fancy Checkout
