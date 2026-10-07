@@ -29,9 +29,38 @@ Hopflow adds a few features Deskflow has chosen not to include.
 | **Copy files on one computer, paste on another** | ❌ | ✅ |
 | **Drag files across the screen edge** | ❌ | ✅ |
 
-The new features are in development; see [releases](https://github.com/Eyad-Alqaysi/hopflow/releases)
-for what has shipped. They need Hopflow on both computers. A Hopflow computer can still connect to
-a stock Deskflow, Input Leap, Barrier or Synergy 1 computer, with the new features turned off.
+The new features need Hopflow on both computers. A Hopflow computer still connects to a stock
+Deskflow, Input Leap, Barrier or Synergy 1 computer; the new features are simply off for that one.
+
+### Ctrl ↔ Cmd
+
+When the cursor moves between a Mac and a Windows or Linux computer, Hopflow swaps Ctrl and Cmd for
+you, so Ctrl+C on Windows is Cmd+C on the Mac and the other way round. Turn it off under
+**Server settings → Swap Ctrl and Cmd automatically**. A computer whose Ctrl or Super mapping you
+changed yourself keeps your mapping.
+
+### Copy and paste files
+
+Copy files or folders in Finder or Explorer, move the cursor to another computer, and paste. Hopflow
+sends the files when the cursor arrives. They are staged in `Downloads/Hopflow/.clipboard` and put on
+that computer's clipboard, so a normal paste copies them where you want them.
+
+### Drag files across the edge
+
+Drag files from Finder or Explorer past the edge of the screen. The drag carries on to the next
+computer, and when you let go the files are saved to `Downloads/Hopflow` and shown in
+Finder or Explorer. On Windows the Hopflow window must be running (it can be minimized to the tray);
+it is what detects the drag.
+
+### Limits and safety
+
+- Transfers go over the same connection as everything else, encrypted with TLS when TLS is on.
+- The server decides what is sent where. Received files are checked: no absolute paths, `..`,
+  drive letters or reserved Windows names, and they only appear once every byte has arrived.
+- Transfers above the size limit (2 GB by default) are refused, and so is anything that does not
+  fit on the disk. Change the limit or turn file transfer off under **Server settings**.
+- Copying and dragging files works on macOS and Windows. Linux can receive dragged files, but
+  cannot paste copied files or start a transfer yet.
 
 ## Install
 
