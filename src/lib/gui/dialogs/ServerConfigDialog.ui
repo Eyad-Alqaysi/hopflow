@@ -351,6 +351,16 @@
            </widget>
           </item>
           <item>
+           <widget class="QCheckBox" name="cbAutoSwapCtrlCmd">
+            <property name="toolTip">
+             <string>When control moves between a Mac and another computer, Ctrl on one acts as Cmd on the other. Computers with a custom Ctrl or Super mapping are not changed.</string>
+            </property>
+            <property name="text">
+             <string>Swap Ctrl and Cmd automatically between Mac and other computers</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QCheckBox" name="cbDefaultLockToComputerState">
             <property name="text">
              <string>Enable lock to computer at startup</string>

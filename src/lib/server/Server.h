@@ -468,4 +468,5 @@ private:
   bool m_defaultLockToComputerState = false;
   bool m_disableLockToComputer = false;
   bool m_enableClipboard = true;
+  bool m_autoSwapCtrlCmd = true;
 };

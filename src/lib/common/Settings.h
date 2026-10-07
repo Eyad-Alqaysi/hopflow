@@ -102,6 +102,7 @@ public:
   };
   struct Server
   {
+    inline static const auto AutoSwapCtrlCmd = QStringLiteral("server/autoSwapCtrlCmd");
     inline static const auto ClipboardSize = QStringLiteral("server/clipboardSize");
     inline static const auto DefaultLockToComputerState = QStringLiteral("server/defaultLockToComputerState");
     inline static const auto DisableLockToComputer = QStringLiteral("server/disableLockToComputer");
@@ -318,6 +319,7 @@ private:
     , Security::CheckPeers
     , Security::KeySize
     , Security::TlsEnabled
+    , Server::AutoSwapCtrlCmd
     , Server::ClipboardSize
     , Server::DefaultLockToComputerState
     , Server::DisableLockToComputer
@@ -374,6 +376,7 @@ private:
     , Gui::SymbolicTrayIcon
     , Security::TlsEnabled
     , Security::CheckPeers
+    , Server::AutoSwapCtrlCmd
     , Server::EnableClipboard
     , Server::Win32KeepForeground
   };

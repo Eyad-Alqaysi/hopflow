@@ -23,6 +23,7 @@
 #include "server/ClientListener.h"
 #include "server/ClientProxy.h"
 #include "server/ClientProxyUnknown.h"
+#include "server/CtrlCmdSwap.h"
 #include "server/PrimaryClient.h"
 
 #ifdef _WIN32
@@ -1073,6 +1074,10 @@ void Server::sendOptions(BaseClientProxy *client) const
     }
   }
 
+  if (m_autoSwapCtrlCmd) {
+    applyAutoCtrlCmdSwap(optionsList, m_primaryClient->getPlatform(), client->getPlatform());
+  }
+
   // send the options
   client->resetOptions();
   client->setOptions(optionsList);
@@ -1107,6 +1112,8 @@ void Server::processOptions()
       m_defaultLockToComputerState = (value != 0);
     } else if (id == kOptionDisableLockToComputer) {
       m_disableLockToComputer = (value != 0);
+    } else if (id == kOptionAutoSwapCtrlCmd) {
+      m_autoSwapCtrlCmd = (value != 0);
     } else if (id == kOptionClipboardSharing) {
       m_enableClipboard = value;
       if (!m_enableClipboard) {
