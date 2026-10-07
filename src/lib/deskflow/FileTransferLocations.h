@@ -18,6 +18,7 @@ namespace deskflow::filetransfer {
 /*!
 On Windows the core may run as SYSTEM in the user's session, so this asks for
 the Downloads folder of the user signed in at the console, not the process's.
+The HOPFLOW_DOWNLOAD_DIR environment variable overrides it.
 */
 std::filesystem::path receivedFilesFolder();
 

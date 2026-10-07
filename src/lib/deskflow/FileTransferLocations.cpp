@@ -73,6 +73,9 @@ fs::path downloadsFolder()
 
 fs::path receivedFilesFolder()
 {
+  if (const auto folder = qEnvironmentVariable("HOPFLOW_DOWNLOAD_DIR"); !folder.isEmpty()) {
+    return pathFromUtf8(folder.toStdString());
+  }
   return downloadsFolder() / kAppName;
 }
 
