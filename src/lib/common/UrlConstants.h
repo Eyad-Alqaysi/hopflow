@@ -10,15 +10,15 @@
 
 // important: this is used for settings paths on some platforms,
 // and must not be a url. qt automatically converts this to reverse domain
-// notation (rdn), e.g. org.deskflow
-const auto kOrgDomain = QStringLiteral("deskflow.org");
+// notation (rdn), e.g. io.github.eyad-alqaysi
+const auto kOrgDomain = QStringLiteral("eyad-alqaysi.github.io");
 
-const auto kUrlSourceQuery = QStringLiteral("source=gui");
-const auto kUrlApp = QStringLiteral("https://%1").arg(kOrgDomain);
-const auto kUrlHelp = QStringLiteral("%1/help?%2").arg(kUrlApp, kUrlSourceQuery);
-const auto kUrlDownload = QStringLiteral("%1/download?%2").arg(kUrlApp, kUrlSourceQuery);
-const auto kUrlWiki = QStringLiteral("%1/wiki?%2").arg(kUrlApp, kUrlSourceQuery);
-const auto kUrlUpdateCheck = QStringLiteral("https://api.%1/version").arg(kOrgDomain);
+const auto kUrlApp = QStringLiteral("https://github.com/Eyad-Alqaysi/hopflow");
+const auto kUrlHelp = QStringLiteral("%1/issues").arg(kUrlApp);
+const auto kUrlDownload = QStringLiteral("%1/releases/latest").arg(kUrlApp);
+const auto kUrlWiki = QStringLiteral("%1#readme").arg(kUrlApp);
+const auto kUrlUpdateCheck = QStringLiteral("https://raw.githubusercontent.com/Eyad-Alqaysi/hopflow/main/LATEST_VERSION");
+const auto kUrlDeskflow = QStringLiteral("https://github.com/deskflow/deskflow");
 
 #if defined(Q_OS_LINUX)
 const auto kUrlGnomeTrayFix = QStringLiteral("https://extensions.gnome.org/extension/615/appindicator-support/");

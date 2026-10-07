@@ -40,8 +40,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Fallback for when git can not be found
-set(DESKFLOW_VERSION_MAJOR 1)
-set(DESKFLOW_VERSION_MINOR 27)
+set(DESKFLOW_VERSION_MAJOR 0)
+set(DESKFLOW_VERSION_MINOR 1)
 set(DESKFLOW_VERSION_PATCH 0)
 set(DESKFLOW_VERSION_TWEAK 0)
 
@@ -93,17 +93,17 @@ endif()
 project(
   deskflow
   VERSION "${DESKFLOW_VERSION_MAJOR}.${DESKFLOW_VERSION_MINOR}.${DESKFLOW_VERSION_PATCH}.${DESKFLOW_VERSION_TWEAK}"
-  DESCRIPTION "Keyboard and mouse sharing utility"
-  HOMEPAGE_URL "https://deskflow.org"
+  DESCRIPTION "Keyboard, mouse and file sharing utility, built on Deskflow"
+  HOMEPAGE_URL "https://github.com/Eyad-Alqaysi/hopflow"
   LANGUAGES C CXX
 )
 
 # Define Additional "PROJECT" vars for packaging and metadata
-set(CMAKE_PROJECT_PROPER_NAME "Deskflow")
-set(CMAKE_PROJECT_VENDOR "${CMAKE_PROJECT_PROPER_NAME} Devs")
-set(CMAKE_PROJECT_COPYRIGHT "(C) 2024-2026 ${CMAKE_PROJECT_VENDOR}")
-set(CMAKE_PROJECT_CONTACT "${CMAKE_PROJECT_PROPER_NAME} <maintainers@deskflow.org>")
-set(CMAKE_PROJECT_REV_FQDN "org.deskflow.deskflow")
+set(CMAKE_PROJECT_PROPER_NAME "Hopflow")
+set(CMAKE_PROJECT_VENDOR "${CMAKE_PROJECT_PROPER_NAME} Contributors")
+set(CMAKE_PROJECT_COPYRIGHT "(C) 2026 ${CMAKE_PROJECT_VENDOR}")
+set(CMAKE_PROJECT_CONTACT "${CMAKE_PROJECT_PROPER_NAME} <https://github.com/Eyad-Alqaysi/hopflow/issues>")
+set(CMAKE_PROJECT_REV_FQDN "io.github.eyad_alqaysi.hopflow")
 
 #Unset the vars used in the project call
 unset(DESKFLOW_VERSION_MAJOR)

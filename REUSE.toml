@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 version = 1
-SPDX-PackageName = "deskflow"
-SPDX-PackageSupplier = "Deskflow Devs"
-SPDX-PackageDownloadLocation = "https://github.com/deskflow/deskflow"
+SPDX-PackageName = "hopflow"
+SPDX-PackageSupplier = "Hopflow Contributors"
+SPDX-PackageDownloadLocation = "https://github.com/Eyad-Alqaysi/hopflow"
 
 [[annotations]]
 path = [
@@ -14,12 +14,11 @@ path = [
  , ".gitattributes"
  , ".gitignore"
  , "cspell.json"
- , "sonar-project.properties"
  , "cmake/vcpkg.json.in"
  , "**/*.md"
  , "docs/**"
  , "deploy/linux/flatpak/**"
- , "deploy/linux/org.deskflow.deskflow.metainfo.xml"
+ , "deploy/linux/io.github.eyad_alqaysi.hopflow.metainfo.xml"
  , "deploy/windows/wix-patch.xml.in"
  , "src/apps/deskflow-client/deskflow-client.exe.manifest"
  , "src/apps/deskflow-core/deskflow-core.exe.manifest"
@@ -34,18 +33,31 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
-   "deploy/mac/dmg-background.tiff"
- , "deploy/mac/dmg-volume.icns"
- , "deploy/linux/org.deskflow.deskflow.png"
- , "deploy/windows/wix-banner.png"
- , "deploy/windows/wix-dialog.png"
- , "src/apps/res/icons/deskflow-**/apps/64/deskflow*.svg"
- , "src/apps/res/image/welcome.png"
- , "src/apps/res/Deskflow.icns"
- , "src/apps/res/deskflow.ico"
+   "src/apps/res/image/welcome.png"
  , "src/apps/res/deskflow.qrc"
 ]
 SPDX-FileCopyrightText = "Deskflow Developers"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+[[annotations]]
+path = [
+   "LATEST_VERSION"
+ , "NOTICE"
+]
+SPDX-FileCopyrightText = "Hopflow Contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+   "deploy/mac/dmg-background.tiff"
+ , "deploy/mac/dmg-volume.icns"
+ , "deploy/linux/io.github.eyad_alqaysi.hopflow.png"
+ , "deploy/windows/wix-banner.png"
+ , "deploy/windows/wix-dialog.png"
+ , "src/apps/res/Hopflow.icns"
+ , "src/apps/res/deskflow.ico"
+]
+SPDX-FileCopyrightText = "Hopflow Contributors"
 SPDX-License-Identifier = "GPL-2.0-only"
 
 [[annotations]]
@@ -65,3 +77,9 @@ path = [
 ]
 SPDX-FileCopyrightText = "Deskflow Developers"
 SPDX-License-Identifier = "GPL-2.0-only WITH LicenseRef-OpenSSL-Exception"
+
+[[annotations]]
+path = "src/apps/res/icons/deskflow-**/apps/64/io.github.eyad_alqaysi.hopflow*.svg"
+precedence = "override"
+SPDX-FileCopyrightText = "Hopflow Contributors"
+SPDX-License-Identifier = "GPL-2.0-only"

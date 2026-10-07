@@ -1,5 +1,5 @@
 {
-    "org.deskflow.deskflow": [
+    "io.github.eyad_alqaysi.hopflow": [
         "appstream-external-screenshot-url",
         "appstream-screenshots-not-mirrored-in-ostree"
     ]

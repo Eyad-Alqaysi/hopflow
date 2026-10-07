@@ -11,6 +11,7 @@
 
 #include "common/Constants.h"
 #include "common/Settings.h"
+#include "common/UrlConstants.h"
 #include "common/VersionInfo.h"
 
 #include <QClipboard>
@@ -28,6 +29,14 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent), ui{std::make_unique
 
   ui->btnCopyVersion->setIcon(QIcon::fromTheme(QIcon::ThemeIcon::EditCopy));
   connect(ui->btnCopyVersion, &QPushButton::clicked, this, &AboutDialog::copyVersionText);
+
+  setWindowTitle(tr("About %1").arg(kAppName));
+  ui->lblName->setText(kAppName);
+  ui->linkContributors->setText(
+      tr("Built on top of <a href=\"%1\">Deskflow</a> &middot; <a href=\"%1/graphs/contributors\">Deskflow "
+         "contributors</a> &middot; <a href=\"%2/graphs/contributors\">%3 contributors</a>")
+          .arg(kUrlDeskflow, kUrlApp, kAppName)
+  );
 
   ui->lblVersion->setText(kDisplayVersion);
   ui->lblDescription->setText(kAppDescription);
