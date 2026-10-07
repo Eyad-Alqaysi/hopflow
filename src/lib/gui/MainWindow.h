@@ -31,6 +31,7 @@ class QLocalServer;
 
 class DeskflowApplication;
 class LogDock;
+class DragProbeWindow;
 class StatusBar;
 
 namespace Ui {
@@ -185,6 +186,7 @@ private:
   deskflow::gui::ipc::DaemonIpcClient *m_daemonIpcClient = nullptr;
 
   LogDock *m_logDock;
+  DragProbeWindow *m_dragProbe;
   StatusBar *m_statusBar = nullptr;
 
   // Window Menu

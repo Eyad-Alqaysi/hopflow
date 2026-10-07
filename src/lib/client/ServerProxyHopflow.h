@@ -29,15 +29,22 @@ public:
 protected:
   void queryInfo() override;
   ConnectionResult parseMessage(const uint8_t *code) override;
+  void onMouseMoved(int32_t x, int32_t y) override;
+  void onMouseButton(ButtonID id, bool pressed) override;
+  void onLeft() override;
 
 private:
   bool parseFileMessage(const uint8_t *code);
   void offer(FileTransferPurpose purpose, const std::vector<std::string> &paths);
   void received(uint32_t id, FileTransferPurpose purpose, const std::vector<std::string> &paths);
+  bool isAtEdge(int32_t x, int32_t y) const;
   deskflow::filetransfer::Transport transport();
 
   deskflow::filetransfer::FileTransferManager m_files;
   //! Files received for the clipboard, so putting them there is not offered back
   std::vector<std::string> m_clipboardReceived;
   bool m_offeringClipboard = false;
+  //! Files offered as being dragged here, while the drag lasts
+  std::vector<std::string> m_dragFiles;
+  int m_buttonsDown = 0;
 };

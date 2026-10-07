@@ -453,7 +453,7 @@ static LRESULT CALLBACK keyboardLLHook(int code, WPARAM wParam, LPARAM lParam)
     KBDLLHOOKSTRUCT *info = reinterpret_cast<KBDLLHOOKSTRUCT *>(lParam);
 
     bool const injected = info->flags & LLKHF_INJECTED;
-    if (!g_isPrimary && injected) {
+    if ((!g_isPrimary && injected) || info->dwExtraInfo == HOPFLOW_PASS_THROUGH_INPUT) {
       return CallNextHookEx(g_keyboardLL, code, wParam, lParam);
     }
 

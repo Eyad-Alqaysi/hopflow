@@ -20,6 +20,7 @@
 #include "dialogs/ServerConfigDialog.h"
 #include "dialogs/SettingsDialog.h"
 
+#include "common/IpcEncoding.h"
 #include "common/PlatformInfo.h"
 #include "common/Settings.h"
 #include "common/UrlConstants.h"
@@ -28,6 +29,7 @@
 #include "gui/TlsUtility.h"
 #include "gui/core/CoreProcess.h"
 #include "gui/ipc/DaemonIpcClient.h"
+#include "gui/widgets/DragProbeWindow.h"
 #include "gui/widgets/LogDock.h"
 #include "net/FingerprintDatabase.h"
 #include "widgets/StatusBar.h"
@@ -87,6 +89,8 @@ MainWindow::MainWindow()
       m_guiDupeChecker{new QLocalServer(this)},
       m_daemonIpcClient{new ipc::DaemonIpcClient(this)},
       m_logDock{new LogDock(this)},
+      // no parent: a window owned by the main window would be hidden with it in the tray
+      m_dragProbe{new DragProbeWindow()},
       m_statusBar{new StatusBar(this)},
       m_menuFile{new QMenu(this)},
       m_menuEdit{new QMenu(this)},
@@ -188,6 +192,8 @@ MainWindow::MainWindow()
 }
 MainWindow::~MainWindow()
 {
+  delete m_dragProbe;
+
   // Stop network monitoring
   if (m_networkMonitor) {
     m_networkMonitor->stopMonitoring();
@@ -303,6 +309,9 @@ void MainWindow::connectSlots()
   connect(&m_coreProcess, &CoreProcess::missingKeyboardLayouts, this, &MainWindow::handleMissingKeyboardLayouts);
   connect(&m_coreProcess, &CoreProcess::filesReceived, this, &MainWindow::handleFilesReceived);
   connect(&m_coreProcess, &CoreProcess::fileTransferFailed, this, &MainWindow::handleFileTransferFailed);
+  connect(&m_coreProcess, &CoreProcess::dragProbeRequested, m_dragProbe, &DragProbeWindow::probeAt);
+  connect(&m_coreProcess, &CoreProcess::dragProbeEnded, m_dragProbe, &DragProbeWindow::stop);
+  connect(m_dragProbe, &DragProbeWindow::filesDragged, &m_coreProcess, &CoreProcess::sendDraggedFiles);
 
   if (Settings::value(Settings::Gui::AutoStartCore).toBool()) {
     connect(ui->btnToggleCore, &QPushButton::clicked, m_actionStopCore, &QAction::trigger, Qt::UniqueConnection);
@@ -845,8 +854,8 @@ void MainWindow::handleConnectionRefused(deskflow::core::ConnectionRefusal reaso
 
 void MainWindow::handleFilesReceived(const QString &details)
 {
-  // first line is how the files were sent, the rest are their paths
-  auto lines = details.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+  // first item is how the files were sent, the rest are their paths
+  auto lines = decodeIpcList(details);
   if (lines.size() < 2) {
     return;
   }
@@ -865,7 +874,8 @@ void MainWindow::handleFilesReceived(const QString &details)
 
 void MainWindow::handleFileTransferFailed(const QString &message)
 {
-  m_trayIcon->showMessage(kAppName, tr("File transfer failed: %1").arg(message), QSystemTrayIcon::Warning);
+  const auto text = decodeIpcList(message).value(0);
+  m_trayIcon->showMessage(kAppName, tr("File transfer failed: %1").arg(text), QSystemTrayIcon::Warning);
 }
 
 void MainWindow::handleMissingKeyboardLayouts(const QString &layouts)

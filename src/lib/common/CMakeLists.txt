@@ -18,6 +18,7 @@ add_library(common STATIC
   Hotkey.cpp
   Hotkey.h
   I18N.h
+  IpcEncoding.h
   I18N.cpp
   KeyModifierID.h
   KeyboardModifier.h

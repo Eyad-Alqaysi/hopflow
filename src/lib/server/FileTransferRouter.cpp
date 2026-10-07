@@ -10,22 +10,10 @@
 #include "deskflow/Computer.h"
 #include "deskflow/FileTransfer.h"
 #include "deskflow/FileTransferLocations.h"
-#include "deskflow/ipc/CoreIpc.h"
+#include "deskflow/FileTransferNotify.h"
 #include "server/BaseClientProxy.h"
 
-#include <QString>
-
 using namespace deskflow::filetransfer;
-
-namespace {
-
-QString describeReceived(FileTransferPurpose purpose, const std::vector<std::string> &paths)
-{
-  const auto kind = purpose == FileTransferPurpose::Clipboard ? QStringLiteral("clipboard") : QStringLiteral("drop");
-  return kind + QLatin1Char('\n') + QString::fromStdString(joinPaths(paths));
-}
-
-} // namespace
 
 FileTransferRouter::FileTransferRouter(BaseClientProxy *primary, deskflow::Computer *computer)
     : m_primary(primary),
@@ -36,8 +24,7 @@ FileTransferRouter::FileTransferRouter(BaseClientProxy *primary, deskflow::Compu
               .received = [this](
                               uint32_t id, FileTransferPurpose purpose, const std::vector<std::string> &paths
                           ) { localReceived(purpose, id, paths); },
-              .failed = [](const std::string &message
-                        ) { ipcSendToClient(QStringLiteral("fileTransferFailed"), QString::fromStdString(message)); }
+              .failed = notifyFailed
           }
       )
 {
@@ -84,7 +71,7 @@ void FileTransferRouter::onClipboardFiles(BaseClientProxy *from, const std::vect
 void FileTransferRouter::onPrimaryClipboardChanged()
 {
   const auto files = m_computer->getClipboardFiles();
-  if (!files.empty() && files == m_localClipboardReceived) {
+  if (!files.empty() && samePaths(files, m_localClipboardReceived)) {
     // our own paste of received files, not a new copy
     return;
   }
@@ -199,7 +186,7 @@ void FileTransferRouter::localReceived(FileTransferPurpose purpose, uint32_t id,
     }
     removeOldClipboardTransfers(id);
   }
-  ipcSendToClient(QStringLiteral("filesReceived"), describeReceived(purpose, paths));
+  notifyReceived(purpose, paths);
 }
 
 void FileTransferRouter::onClientRemoved(BaseClientProxy *client)
@@ -258,7 +245,7 @@ void FileTransferRouter::onStart(
     m_routes.erase(it);
     from->fileEnd(id, FileTransferStatus::Cancelled);
     if (parsed && m_enabled) {
-      ipcSendToClient(QStringLiteral("fileTransferFailed"), QStringLiteral("the files are larger than the limit"));
+      notifyFailed("the files are larger than the limit");
     }
     return;
   }

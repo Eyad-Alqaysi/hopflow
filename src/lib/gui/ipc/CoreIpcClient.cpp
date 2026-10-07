@@ -7,6 +7,7 @@
 #include "CoreIpcClient.h"
 
 #include "common/Constants.h"
+#include "common/IpcEncoding.h"
 
 #include <QString>
 
@@ -20,6 +21,11 @@ CoreIpcClient::CoreIpcClient(QObject *parent) : IpcClient(parent, kCoreIpcName, 
 void CoreIpcClient::sendStop()
 {
   sendMessage(QStringLiteral("stop"));
+}
+
+void CoreIpcClient::sendDraggedFiles(const QStringList &paths)
+{
+  sendMessage(QStringLiteral("draggedFiles=%1").arg(encodeIpcList(paths)));
 }
 
 void CoreIpcClient::processCommand(const QString &command, const QStringList &parts)

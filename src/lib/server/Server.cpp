@@ -380,13 +380,23 @@ bool Server::isLockedToComputer() const
     return true;
   }
 
-  // locked if primary says we're locked
+  // locked if primary says we're locked (a button is down), unless files
+  // are being dragged: those may cross to another computer
   if (m_primaryClient->isLockedToComputer()) {
-    return true;
+    return !isDraggingFiles();
   }
 
   // not locked
   return false;
+}
+
+bool Server::isDraggingFiles() const
+{
+  // clients report their own drags; the server computer is asked when it matters
+  if (m_active == m_primaryClient) {
+    m_fileTransfers->onDragFiles(m_primaryClient, m_computer->getDraggedFiles());
+  }
+  return m_fileTransfers->isDragging(m_active);
 }
 
 int32_t Server::getJumpZoneSize(const BaseClientProxy *client) const
@@ -456,6 +466,11 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
   // since that's a waste of time we skip that and just warp the
   // mouse.
   if (m_active != dst) {
+    // the dragged files now travel with the cursor, so the source stops its own drag
+    if (m_active == m_primaryClient && m_fileTransfers->isDragging(m_primaryClient)) {
+      m_computer->cancelDrag();
+    }
+
     // leave active computer
     if (!m_active->leave()) {
       // cannot leave computer
@@ -1627,6 +1642,8 @@ void Server::onMouseUp(ButtonID id)
 
   // relay
   m_active->mouseUp(id);
+
+  m_fileTransfers->onDrop(m_active);
 }
 
 bool Server::onMouseMovePrimary(int32_t x, int32_t y)

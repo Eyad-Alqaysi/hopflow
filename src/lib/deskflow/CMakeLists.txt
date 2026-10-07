@@ -45,12 +45,16 @@ add_library(${lib_name} STATIC ${PLATFORM_CODE}
   DisplayException.cpp
   DisplayException.h
   DisplayInvalidException.h
+  DragProbe.cpp
+  DragProbe.h
   FileTransfer.cpp
   FileTransfer.h
   FileTransferLocations.cpp
   FileTransferLocations.h
   FileTransferManager.cpp
   FileTransferManager.h
+  FileTransferNotify.cpp
+  FileTransferNotify.h
   IApp.h
   IClient.h
   IClipboard.cpp

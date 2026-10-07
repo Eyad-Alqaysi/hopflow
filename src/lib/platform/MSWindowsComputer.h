@@ -121,6 +121,10 @@ public:
   void setSequenceNumber(uint32_t) override;
   bool isPrimary() const override;
   std::string getSecureInputApp() const override;
+  std::vector<std::string> getClipboardFiles() const override;
+  bool setClipboardFiles(const std::vector<std::string> &paths) override;
+  std::vector<std::string> getDraggedFiles() const override;
+  void cancelDrag() override;
 
 protected:
   // IPlatformComputer overrides
