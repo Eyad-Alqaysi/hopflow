@@ -14,6 +14,7 @@
 #include "deskflow/OptionTypes.h"
 
 #include <string>
+#include <vector>
 
 class IClipboard;
 class IPlatformComputer;
@@ -218,9 +219,18 @@ public:
   */
   std::string getSecureInputApp() const;
 
+  //! Put files on the system clipboard, see IPlatformComputer::setClipboardFiles()
+  bool setClipboardFiles(const std::vector<std::string> &paths);
+
   //@}
   //! @name accessors
   //@{
+
+  //! See IPlatformComputer::getClipboardFiles()
+  std::vector<std::string> getClipboardFiles() const;
+
+  //! See IPlatformComputer::getDraggedFiles()
+  std::vector<std::string> getDraggedFiles() const;
 
   //! Test if cursor on computer
   /*!

@@ -7,6 +7,8 @@
 
 #include "server/BaseClientProxy.h"
 
+#include "base/Log.h"
+
 //
 // BaseClientProxy
 //
@@ -31,4 +33,29 @@ void BaseClientProxy::getJumpCursorPos(int32_t &x, int32_t &y) const
 std::string BaseClientProxy::getName() const
 {
   return m_name;
+}
+
+void BaseClientProxy::fileRequest(uint32_t id, FileTransferPurpose, const std::string &)
+{
+  LOG_WARN("file transfer %u: \"%s\" cannot send files", id, getName().c_str());
+}
+
+void BaseClientProxy::fileStart(uint32_t id, FileTransferPurpose, const std::string &)
+{
+  LOG_WARN("file transfer %u: \"%s\" cannot receive files", id, getName().c_str());
+}
+
+void BaseClientProxy::fileChunk(uint32_t, const std::string &)
+{
+  // the start was already refused
+}
+
+void BaseClientProxy::fileAck(uint32_t, uint32_t)
+{
+  // the request was already refused
+}
+
+void BaseClientProxy::fileEnd(uint32_t, FileTransferStatus)
+{
+  // the start or request was already refused
 }

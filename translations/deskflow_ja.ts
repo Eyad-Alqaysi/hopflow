@@ -582,6 +582,22 @@ Do you want to connect to the server?
         <source>&lt;p&gt;Failed to connect to the server &apos;%1&apos;.&lt;/p&gt;&lt;p&gt;A Client with your name is already connected to the server.&lt;/p&gt;Please ensure that you&apos;re using a unique name and that only a single instance of the client process is running.&lt;/p&gt;</source>
         <translation>&lt;p&gt;サーバー &apos;%1&apos; への接続に失敗しました。&lt;/p&gt;&lt;p&gt;同じ名前のクライアントがサーバーに接続済です。&lt;/p&gt;&lt;p&gt;名前の重複がないことと、クライアントプロセスが多重起動していない事を確認してください。&lt;/p&gt;</translation>
     </message>
+    <message numerus="yes">
+        <source>%n item(s) copied from another computer, ready to paste.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Received %n item(s) in %1</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>File transfer failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>View &amp;Help</source>
         <translation>ヘルプを表示(&amp;H)</translation>
@@ -1116,6 +1132,14 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
     <message>
         <source>Swap Ctrl and Cmd automatically between Mac and other computers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy files on one computer and paste them on another, or drag them across the screen edge. Only works between computers running Hopflow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable file transfer</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

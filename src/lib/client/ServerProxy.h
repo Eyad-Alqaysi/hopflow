@@ -48,7 +48,7 @@ public:
   //@{
 
   void onInfoChanged();
-  bool onGrabClipboard(ClipboardID);
+  virtual bool onGrabClipboard(ClipboardID);
   void onClipboardChanged(ClipboardID, const IClipboard *);
 
   //@}

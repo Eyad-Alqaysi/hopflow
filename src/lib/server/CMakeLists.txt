@@ -36,6 +36,8 @@ add_library(server STATIC
   Config.h
   CtrlCmdSwap.cpp
   CtrlCmdSwap.h
+  FileTransferRouter.cpp
+  FileTransferRouter.h
   InputFilter.cpp
   InputFilter.h
   PrimaryClient.cpp

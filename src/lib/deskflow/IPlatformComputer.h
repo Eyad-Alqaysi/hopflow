@@ -15,6 +15,9 @@
 #include "deskflow/ISecondaryComputer.h"
 #include "deskflow/OptionTypes.h"
 
+#include <string>
+#include <vector>
+
 class IClipboard;
 
 //! Computer interface
@@ -144,6 +147,41 @@ public:
   Return true iff this comptuer is a primary comptuer.
   */
   virtual bool isPrimary() const = 0;
+
+  //! @name Hopflow file transfer
+  //@{
+
+  //! Get the files on the system clipboard
+  /*!
+  Returns absolute paths if the system clipboard holds files copied in the
+  file manager, otherwise an empty list.
+  */
+  virtual std::vector<std::string> getClipboardFiles() const
+  {
+    return {};
+  }
+
+  //! Put files on the system clipboard
+  /*!
+  Sets the system clipboard to \p paths so they can be pasted in the file
+  manager. Returns false if the platform does not support it.
+  */
+  virtual bool setClipboardFiles(const std::vector<std::string> &paths)
+  {
+    return false;
+  }
+
+  //! Get the files the user is dragging
+  /*!
+  Returns absolute paths of the files in a drag that is in progress, if any.
+  Only meaningful while a mouse button is down.
+  */
+  virtual std::vector<std::string> getDraggedFiles() const
+  {
+    return {};
+  }
+
+  //@}
 
   //@}
   // IKeyState overrides

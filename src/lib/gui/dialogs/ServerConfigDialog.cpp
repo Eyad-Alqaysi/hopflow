@@ -80,6 +80,8 @@ void ServerConfigDialog::save()
   Settings::setValue(Settings::Server::Protocol, networkProtocolToOption(m_protocol));
   Settings::setValue(Settings::Server::EnableClipboard, m_enableClipboard);
   Settings::setValue(Settings::Server::ClipboardSize, m_clipboardSize);
+  Settings::setValue(Settings::Server::EnableFileTransfer, m_enableFileTransfer);
+  Settings::setValue(Settings::Server::FileTransferMaxSize, m_fileTransferMaxSize);
   Settings::setValue(Settings::Server::EnableHeartbeat, m_enableHeartbeat);
   Settings::setValue(Settings::Server::Heartbeat, m_heartbeatRate);
   Settings::setValue(Settings::Server::EnableSwitchDelay, m_enableSwitchDelay);
@@ -242,8 +244,27 @@ void ServerConfigDialog::toggleClipboard(bool enabled)
   ui->sbClipboardSizeLimit->setEnabled(enabled);
   if (enabled && !ui->sbClipboardSizeLimit->value()) {
     m_clipboardSize = Settings::defaultValue(Settings::Server::ClipboardSize).toUInt();
+    m_enableFileTransfer = Settings::defaultValue(Settings::Server::EnableFileTransfer).toBool();
+    m_fileTransferMaxSize = Settings::defaultValue(Settings::Server::FileTransferMaxSize).toUInt();
     ui->sbClipboardSizeLimit->setValue(m_clipboardSize ? m_clipboardSize : 1);
   }
+  setButtonBoxEnabledButtons();
+}
+
+void ServerConfigDialog::toggleFileTransfer(bool enabled)
+{
+  if (m_enableFileTransfer == enabled)
+    return;
+  m_enableFileTransfer = enabled;
+  ui->sbFileTransferSizeLimit->setEnabled(enabled);
+  setButtonBoxEnabledButtons();
+}
+
+void ServerConfigDialog::setFileTransferLimit(int limit)
+{
+  if (m_fileTransferMaxSize == static_cast<uint>(limit))
+    return;
+  m_fileTransferMaxSize = limit;
   setButtonBoxEnabledButtons();
 }
 
@@ -408,6 +429,8 @@ void ServerConfigDialog::loadFromConfig()
   m_autoSwapCtrlCmd = Settings::value(Settings::Server::AutoSwapCtrlCmd).toBool();
   m_enableClipboard = Settings::value(Settings::Server::EnableClipboard).toBool();
   m_clipboardSize = Settings::value(Settings::Server::ClipboardSize).toUInt();
+  m_enableFileTransfer = Settings::value(Settings::Server::EnableFileTransfer).toBool();
+  m_fileTransferMaxSize = Settings::value(Settings::Server::FileTransferMaxSize).toUInt();
 
   ui->lineConfigFile->setText(serverConfig().configFile());
   ui->groupExternalConfig->setChecked(serverConfig().useExternalConfig());
@@ -470,6 +493,9 @@ void ServerConfigDialog::refreshControls()
   ui->cbEnableClipboard->setChecked(m_enableClipboard);
   ui->sbClipboardSizeLimit->setEnabled(m_enableClipboard);
   ui->sbClipboardSizeLimit->setValue(m_clipboardSize);
+  ui->cbEnableFileTransfer->setChecked(m_enableFileTransfer);
+  ui->sbFileTransferSizeLimit->setEnabled(m_enableFileTransfer);
+  ui->sbFileTransferSizeLimit->setValue(static_cast<int>(m_fileTransferMaxSize));
 }
 
 void ServerConfigDialog::initConnections() const
@@ -511,6 +537,11 @@ void ServerConfigDialog::initConnections() const
 
   connect(ui->cbRelativeMouseMoves, &QCheckBox::toggled, this, &ServerConfigDialog::toggleRelativeMouseMoves);
   connect(ui->cbEnableClipboard, &QCheckBox::toggled, this, &ServerConfigDialog::toggleClipboard);
+  connect(ui->cbEnableFileTransfer, &QCheckBox::toggled, this, &ServerConfigDialog::toggleFileTransfer);
+  connect(
+      ui->sbFileTransferSizeLimit, QOverload<int>::of(&QSpinBox::valueChanged), this,
+      &ServerConfigDialog::setFileTransferLimit
+  );
   connect(ui->btnBrowseConfigFile, &QPushButton::clicked, this, &ServerConfigDialog::browseConfigFile);
   connect(ui->groupExternalConfig, &QGroupBox::toggled, this, &ServerConfigDialog::toggleExternalConfig);
   connect(ui->lineConfigFile, &QLineEdit::textChanged, this, &ServerConfigDialog::setServerConfig);
@@ -539,6 +570,8 @@ void ServerConfigDialog::updateControls() const
   ui->cbAutoSwapCtrlCmd->setEnabled(writable);
   ui->cbEnableClipboard->setEnabled(writable);
   ui->sbClipboardSizeLimit->setEnabled(writable);
+  ui->cbEnableFileTransfer->setEnabled(writable);
+  ui->sbFileTransferSizeLimit->setEnabled(writable && ui->cbEnableFileTransfer->isChecked());
   ui->rbProtocolBarrier->setEnabled(writable);
   ui->rbProtocolSynergy->setEnabled(writable);
   ui->cbHeartbeat->setEnabled(writable);
@@ -609,6 +642,8 @@ bool ServerConfigDialog::isGeneralConfigModified() const
          m_protocol != Settings::networkProtocol() ||
          m_enableClipboard != Settings::value(Settings::Server::EnableClipboard).toBool() ||
          m_clipboardSize != Settings::value(Settings::Server::ClipboardSize).toUInt() ||
+         m_enableFileTransfer != Settings::value(Settings::Server::EnableFileTransfer).toBool() ||
+         m_fileTransferMaxSize != Settings::value(Settings::Server::FileTransferMaxSize).toUInt() ||
          m_enableHeartbeat != Settings::value(Settings::Server::EnableHeartbeat).toBool() ||
          m_heartbeatRate != Settings::value(Settings::Server::Heartbeat).toInt() ||
          m_enableSwitchDelay != Settings::value(Settings::Server::EnableSwitchDelay).toBool() ||
@@ -629,6 +664,8 @@ bool ServerConfigDialog::isGeneralConfigDefault() const
          m_protocol == networkProtocolFromString(Settings::defaultValue(Settings::Server::Protocol).toString()) &&
          m_enableClipboard == Settings::defaultValue(Settings::Server::EnableClipboard).toBool() &&
          m_clipboardSize == Settings::defaultValue(Settings::Server::ClipboardSize).toUInt() &&
+         m_enableFileTransfer == Settings::defaultValue(Settings::Server::EnableFileTransfer).toBool() &&
+         m_fileTransferMaxSize == Settings::defaultValue(Settings::Server::FileTransferMaxSize).toUInt() &&
          m_enableHeartbeat == Settings::defaultValue(Settings::Server::EnableHeartbeat).toBool() &&
          m_heartbeatRate == Settings::defaultValue(Settings::Server::Heartbeat).toInt() &&
          m_enableSwitchDelay == Settings::defaultValue(Settings::Server::EnableSwitchDelay).toBool() &&

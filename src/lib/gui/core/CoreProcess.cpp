@@ -662,6 +662,10 @@ void CoreProcess::onCoreIpcMessageReceived(const QString &command, const QString
     Q_EMIT peerFingerprint(args);
   } else if (command == "missingKeyboardLayouts") {
     Q_EMIT missingKeyboardLayouts(args);
+  } else if (command == "filesReceived") {
+    Q_EMIT filesReceived(args);
+  } else if (command == "fileTransferFailed") {
+    Q_EMIT fileTransferFailed(args);
   }
 }
 

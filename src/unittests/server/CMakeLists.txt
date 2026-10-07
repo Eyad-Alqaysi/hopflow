@@ -44,3 +44,11 @@ create_test(
   SOURCE CtrlCmdSwapTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
 )
+
+create_test(
+  NAME FileTransferRouterTests
+  DEPENDS server
+  LIBS base arch io mt net platform app ${extra_libs}
+  SOURCE FileTransferRouterTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/server"
+)

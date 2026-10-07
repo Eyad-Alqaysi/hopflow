@@ -120,6 +120,8 @@ private:
   void handleConnectionRefused(deskflow::core::ConnectionRefusal reason);
   void handlePeerFingerprint(const QString &fingerprint);
   void handleMissingKeyboardLayouts(const QString &layouts);
+  void handleFilesReceived(const QString &details);
+  void handleFileTransferFailed(const QString &message);
   void closeEvent(QCloseEvent *event) override;
   bool maybeHideToTray();
   void secureSocket(bool secureSocket);
