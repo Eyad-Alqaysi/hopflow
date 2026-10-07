@@ -697,6 +697,9 @@ void MSWindowsComputer::fakeMouseButton(ButtonID id, bool press)
 
   if (id == kButtonLeft) {
     m_buttons[kButtonLeft] = press;
+    if (!press) {
+      deskflow::dragprobe::stop();
+    }
   }
 }
 
@@ -1196,6 +1199,11 @@ bool MSWindowsComputer::onMouseButton(WPARAM wParam, LPARAM lParam)
   // keep our shadow key state up to date
   if (button >= kButtonLeft && button <= kButtonExtra0 + 1) {
     m_buttons[button] = pressed;
+  }
+
+  // a drag that was probed is over; the next one must be probed afresh
+  if (button == kButtonLeft && !pressed) {
+    deskflow::dragprobe::stop();
   }
 
   // ignore message if posted prior to last mark change
