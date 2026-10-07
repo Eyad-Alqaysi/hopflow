@@ -35,7 +35,9 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMenu>
@@ -43,6 +45,7 @@
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkInterface>
+#include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -56,6 +59,26 @@
 #endif
 
 using namespace deskflow::gui;
+
+namespace {
+
+//! Show \p path selected in Finder or Explorer, or open its folder elsewhere
+void revealInFileManager(const QString &path)
+{
+#if defined(Q_OS_MAC)
+  QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-R"), path});
+#elif defined(Q_OS_WIN)
+  // explorer wants /select,"path" as one argument, which QProcess would quote differently
+  QProcess explorer;
+  explorer.setProgram(QStringLiteral("explorer.exe"));
+  explorer.setNativeArguments(QStringLiteral("/select,\"%1\"").arg(QDir::toNativeSeparators(path)));
+  explorer.startDetached();
+#else
+  QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+#endif
+}
+
+} // namespace
 
 MainWindow::MainWindow()
     : ui{std::make_unique<Ui::MainWindow>()},
@@ -278,6 +301,8 @@ void MainWindow::connectSlots()
   connect(&m_coreProcess, &CoreProcess::retryIn, this, &MainWindow::updateTimeoutDelay);
   connect(&m_coreProcess, &CoreProcess::peerFingerprint, this, &MainWindow::handlePeerFingerprint);
   connect(&m_coreProcess, &CoreProcess::missingKeyboardLayouts, this, &MainWindow::handleMissingKeyboardLayouts);
+  connect(&m_coreProcess, &CoreProcess::filesReceived, this, &MainWindow::handleFilesReceived);
+  connect(&m_coreProcess, &CoreProcess::fileTransferFailed, this, &MainWindow::handleFileTransferFailed);
 
   if (Settings::value(Settings::Gui::AutoStartCore).toBool()) {
     connect(ui->btnToggleCore, &QPushButton::clicked, m_actionStopCore, &QAction::trigger, Qt::UniqueConnection);
@@ -816,6 +841,31 @@ void MainWindow::handleConnectionRefused(deskflow::core::ConnectionRefusal reaso
   );
 
   m_clientErrorVisible = false;
+}
+
+void MainWindow::handleFilesReceived(const QString &details)
+{
+  // first line is how the files were sent, the rest are their paths
+  auto lines = details.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+  if (lines.size() < 2) {
+    return;
+  }
+
+  const bool forClipboard = lines.takeFirst() == QStringLiteral("clipboard");
+  const auto count = static_cast<int>(lines.size());
+  if (forClipboard) {
+    m_trayIcon->showMessage(kAppName, tr("%n item(s) copied from another computer, ready to paste.", "", count));
+    return;
+  }
+
+  const auto folder = QDir::toNativeSeparators(QFileInfo(lines.first()).absolutePath());
+  m_trayIcon->showMessage(kAppName, tr("Received %n item(s) in %1", "", count).arg(folder));
+  revealInFileManager(lines.first());
+}
+
+void MainWindow::handleFileTransferFailed(const QString &message)
+{
+  m_trayIcon->showMessage(kAppName, tr("File transfer failed: %1").arg(message), QSystemTrayIcon::Warning);
 }
 
 void MainWindow::handleMissingKeyboardLayouts(const QString &layouts)

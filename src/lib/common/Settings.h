@@ -107,11 +107,13 @@ public:
     inline static const auto DefaultLockToComputerState = QStringLiteral("server/defaultLockToComputerState");
     inline static const auto DisableLockToComputer = QStringLiteral("server/disableLockToComputer");
     inline static const auto EnableClipboard = QStringLiteral("server/enableClipboard");
+    inline static const auto EnableFileTransfer = QStringLiteral("server/enableFileTransfer");
     inline static const auto EnableHeartbeat = QStringLiteral("server/enableHeartbeat");
     inline static const auto EnableSwitchDelay = QStringLiteral("server/enableSwitchDelay");
     inline static const auto EnableSwitchDoubleTap = QStringLiteral("server/enableSwitchDoubleTap");
     inline static const auto ExternalConfig = QStringLiteral("server/externalConfig");
     inline static const auto ExternalConfigFile = QStringLiteral("server/externalConfigFile");
+    inline static const auto FileTransferMaxSize = QStringLiteral("server/fileTransferMaxSize");
     inline static const auto GridHeight = QStringLiteral("server/gridHeight");
     inline static const auto GridWidth = QStringLiteral("server/gridWidth");
     inline static const auto Heartbeat = QStringLiteral("server/heartbeat");
@@ -329,6 +331,8 @@ private:
     , Server::EnableSwitchDoubleTap
     , Server::ExternalConfig
     , Server::ExternalConfigFile
+    , Server::EnableFileTransfer
+    , Server::FileTransferMaxSize
     , Server::GridHeight
     , Server::GridWidth
     , Server::Heartbeat
@@ -378,6 +382,7 @@ private:
     , Security::CheckPeers
     , Server::AutoSwapCtrlCmd
     , Server::EnableClipboard
+    , Server::EnableFileTransfer
     , Server::Win32KeepForeground
   };
 

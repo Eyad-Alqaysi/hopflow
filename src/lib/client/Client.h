@@ -190,6 +190,12 @@ public:
   void setOptions(const OptionsList &options) override;
   std::string getName() const override;
 
+  //! Get the computer this client controls
+  deskflow::Computer *getComputer() const
+  {
+    return m_computer;
+  }
+
 private:
   void saveRelativeRestorePosition();
   void sendClipboard(ClipboardID);

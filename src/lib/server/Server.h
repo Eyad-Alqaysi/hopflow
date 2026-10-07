@@ -19,10 +19,12 @@
 
 #include <climits>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
 class BaseClientProxy;
+class FileTransferRouter;
 class EventQueueTimer;
 class PrimaryClient;
 class InputFilter;
@@ -197,6 +199,12 @@ public:
   Set the \c list to the names of the currently connected clients.
   */
   void getClients(std::vector<std::string> &list) const;
+
+  //! Get the router for file transfers between computers
+  FileTransferRouter &fileTransfers()
+  {
+    return *m_fileTransfers;
+  }
   void sendConnectedClientsIpc() const;
   size_t getMaximumClipboardSizeBytes() const;
 
@@ -469,4 +477,5 @@ private:
   bool m_disableLockToComputer = false;
   bool m_enableClipboard = true;
   bool m_autoSwapCtrlCmd = true;
+  std::unique_ptr<FileTransferRouter> m_fileTransfers;
 };

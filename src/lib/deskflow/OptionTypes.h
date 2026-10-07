@@ -58,6 +58,8 @@ static const OptionID kOptionDisableLockToComputer = OPTION_CODE("DLTS");
 static const OptionID kOptionClipboardSharing = OPTION_CODE("CLPS");
 static const OptionID kOptionClipboardSharingSize = OPTION_CODE("CLSZ");
 static const OptionID kOptionAutoSwapCtrlCmd = OPTION_CODE("HASW");
+static const OptionID kOptionFileTransfer = OPTION_CODE("HFTE");
+static const OptionID kOptionFileTransferMaxSize = OPTION_CODE("HFTM");
 //@}
 
 //! @name Computer switch corner masks

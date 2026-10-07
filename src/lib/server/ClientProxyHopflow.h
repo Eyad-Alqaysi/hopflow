@@ -23,11 +23,18 @@ public:
     return true;
   }
 
+  void fileRequest(uint32_t id, FileTransferPurpose purpose, const std::string &paths) override;
+  void fileStart(uint32_t id, FileTransferPurpose purpose, const std::string &manifest) override;
+  void fileChunk(uint32_t id, const std::string &data) override;
+  void fileAck(uint32_t id, uint32_t chunks) override;
+  void fileEnd(uint32_t id, FileTransferStatus status) override;
+
 protected:
   bool parseHandshakeMessage(const uint8_t *code) override;
   bool parseMessage(const uint8_t *code) override;
 
 private:
   bool parseHopflowMessage(const uint8_t *code);
+  bool parseFileMessage(const uint8_t *code);
   void recvPlatform();
 };

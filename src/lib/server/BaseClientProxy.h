@@ -101,6 +101,20 @@ public:
   virtual void sendDragInfo(uint32_t fileCount, const char *info, size_t size) = 0;
   virtual void fileChunkSending(uint8_t mark, char *data, size_t dataSize) = 0;
   virtual std::string getSecureInputApp() const = 0;
+
+  //! @name Hopflow file transfer
+  /*!
+  Only called for clients where isHopflow() is true; see the HF* messages in
+  ProtocolTypes.h.
+  */
+  //@{
+  virtual void fileRequest(uint32_t id, FileTransferPurpose purpose, const std::string &paths);
+  virtual void fileStart(uint32_t id, FileTransferPurpose purpose, const std::string &manifest);
+  virtual void fileChunk(uint32_t id, const std::string &data);
+  virtual void fileAck(uint32_t id, uint32_t chunks);
+  virtual void fileEnd(uint32_t id, FileTransferStatus status);
+  //@}
+
   virtual void secureInputNotification(const std::string &app) const = 0;
   std::string getName() const override;
   virtual deskflow::IStream *getStream() const = 0;

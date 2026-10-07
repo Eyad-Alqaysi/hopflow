@@ -467,4 +467,19 @@ std::string Computer::getSecureInputApp() const
   return m_computer->getSecureInputApp();
 }
 
+bool Computer::setClipboardFiles(const std::vector<std::string> &paths)
+{
+  return m_computer->setClipboardFiles(paths);
+}
+
+std::vector<std::string> Computer::getClipboardFiles() const
+{
+  return m_computer->getClipboardFiles();
+}
+
+std::vector<std::string> Computer::getDraggedFiles() const
+{
+  return m_computer->getDraggedFiles();
+}
+
 } // namespace deskflow

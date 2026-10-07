@@ -24,6 +24,7 @@
 #include "server/ClientProxy.h"
 #include "server/ClientProxyUnknown.h"
 #include "server/CtrlCmdSwap.h"
+#include "server/FileTransferRouter.h"
 #include "server/PrimaryClient.h"
 
 #ifdef _WIN32
@@ -47,7 +48,8 @@ Server::Server(ServerConfig &config, PrimaryClient *primaryClient, deskflow::Com
       m_config(&config),
       m_inputFilter(config.getInputFilter()),
       m_computer(computer),
-      m_events(events)
+      m_events(events),
+      m_fileTransfers(std::make_unique<FileTransferRouter>(primaryClient, computer))
 {
   // must have a primary client and it must have a canonical name
   assert(m_primaryClient != nullptr);
@@ -503,6 +505,8 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
         m_active->setClipboard(id, &m_clipboards[id].m_clipboard);
       }
     }
+
+    m_fileTransfers->onEnter(m_active);
 
     auto *info = new Server::SwitchToComputerInfo(m_active->getName());
     m_events->addEvent(Event(EventTypes::ServerComputerSwitched, this, info));
@@ -1114,6 +1118,10 @@ void Server::processOptions()
       m_disableLockToComputer = (value != 0);
     } else if (id == kOptionAutoSwapCtrlCmd) {
       m_autoSwapCtrlCmd = (value != 0);
+    } else if (id == kOptionFileTransfer) {
+      m_fileTransfers->setEnabled(value != 0);
+    } else if (id == kOptionFileTransferMaxSize) {
+      m_fileTransfers->setMaxTransferBytes(static_cast<uint64_t>(value) * 1024 * 1024);
     } else if (id == kOptionClipboardSharing) {
       m_enableClipboard = value;
       if (!m_enableClipboard) {
@@ -1212,6 +1220,12 @@ void Server::handleClipboardGrabbed(const Event &event, BaseClientProxy *grabber
     } else {
       client->grabClipboard(info->m_id);
     }
+  }
+
+  if (grabber == m_primaryClient) {
+    m_fileTransfers->onPrimaryClipboardChanged();
+  } else {
+    m_fileTransfers->onClipboardTakenByOther(grabber);
   }
 
   if (grabber == m_primaryClient && m_active != m_primaryClient) {
@@ -1940,6 +1954,8 @@ bool Server::removeClient(BaseClientProxy *client)
   m_events->removeHandler(ComputerShapeChanged, client->getEventTarget());
   m_events->removeHandler(ClipboardGrabbed, client->getEventTarget());
   m_events->removeHandler(ClipboardChanged, client->getEventTarget());
+
+  m_fileTransfers->onClientRemoved(client);
 
   // remove from list
   m_clients.erase(getName(client));
