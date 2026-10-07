@@ -45,6 +45,13 @@ std::string pathToUtf8(const std::filesystem::path &path);
 std::string joinPaths(const std::vector<std::string> &paths);
 std::vector<std::string> splitPaths(const std::string &joined);
 
+//! True if both lists name the same paths, ignoring Unicode normalization
+/*!
+macOS reports file names in decomposed form, so a path read back from the
+pasteboard may differ byte-wise from the one that was written.
+*/
+bool samePaths(const std::vector<std::string> &a, const std::vector<std::string> &b);
+
 //! True if \p path is relative and cannot leave the folder it is resolved in
 bool isSafeRelativePath(const std::string &path);
 

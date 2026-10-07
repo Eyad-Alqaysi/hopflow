@@ -196,6 +196,17 @@ void FileTransferTests::splitAndJoinPaths()
   QCOMPARE(splitPaths("a\n\nb\n"), (std::vector<std::string>{"a", "b"}));
 }
 
+void FileTransferTests::samePathsIgnoresNormalization()
+{
+  // "ö" precomposed, and as "o" plus a combining diaeresis, as macOS reports it
+  const std::vector<std::string> composed = {"/tmp/f\xc3\xb6lder"};
+  const std::vector<std::string> decomposed = {"/tmp/fo\xcc\x88lder"};
+  QVERIFY(composed != decomposed);
+  QVERIFY(samePaths(composed, decomposed));
+  QVERIFY(!samePaths(composed, {"/tmp/folder"}));
+  QVERIFY(!samePaths(composed, {}));
+}
+
 void FileTransferTests::uniqueDestination()
 {
   QTemporaryDir dir;

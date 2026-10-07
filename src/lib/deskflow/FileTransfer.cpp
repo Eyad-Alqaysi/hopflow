@@ -100,6 +100,14 @@ std::vector<std::string> splitPaths(const std::string &joined)
   return paths;
 }
 
+bool samePaths(const std::vector<std::string> &a, const std::vector<std::string> &b)
+{
+  return std::ranges::equal(a, b, [](const std::string &x, const std::string &y) {
+    return QString::fromStdString(x).normalized(QString::NormalizationForm_C) ==
+           QString::fromStdString(y).normalized(QString::NormalizationForm_C);
+  });
+}
+
 bool isSafeRelativePath(const std::string &path)
 {
   if (path.empty() || path.size() > kMaxPathLength || path.front() == '/') {

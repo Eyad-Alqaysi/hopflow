@@ -21,10 +21,12 @@
 #include "deskflow/ClientApp.h"
 #include "deskflow/Clipboard.h"
 #include "deskflow/DisplayException.h"
+#include "deskflow/DragProbe.h"
 #include "deskflow/KeyMap.h"
 #include "platform/MSWindowsClipboard.h"
 #include "platform/MSWindowsDesks.h"
 #include "platform/MSWindowsEventQueueBuffer.h"
+#include "platform/MSWindowsFileClipboard.h"
 #include "platform/MSWindowsKeyState.h"
 #include "platform/MSWindowsScreenSaver.h"
 
@@ -1720,6 +1722,51 @@ std::string MSWindowsComputer::getSecureInputApp() const
 {
   // ignore on Windows
   return "";
+}
+
+std::vector<std::string> MSWindowsComputer::getClipboardFiles() const
+{
+  return deskflow::mswindows::clipboardFiles(m_window);
+}
+
+bool MSWindowsComputer::setClipboardFiles(const std::vector<std::string> &paths)
+{
+  return deskflow::mswindows::setClipboardFiles(m_window, paths);
+}
+
+std::vector<std::string> MSWindowsComputer::getDraggedFiles() const
+{
+  if (!m_buttons[kButtonLeft]) {
+    deskflow::dragprobe::stop();
+    return {};
+  }
+
+  // Explorer cannot drag into this process when it runs elevated, so the GUI,
+  // which runs as the user, probes for the drag; the files arrive a moment later
+  int32_t x = 0;
+  int32_t y = 0;
+  getCursorPos(x, y);
+  deskflow::dragprobe::start(x, y);
+  return deskflow::dragprobe::files();
+}
+
+void MSWindowsComputer::cancelDrag()
+{
+  // Escape cancels a drag; mark it so our own keyboard hook lets it through
+  INPUT inputs[2] = {};
+  for (int i = 0; i < 2; ++i) {
+    inputs[i].type = INPUT_KEYBOARD;
+    inputs[i].ki.wVk = VK_ESCAPE;
+    inputs[i].ki.dwFlags = i == 0 ? 0 : KEYEVENTF_KEYUP;
+    inputs[i].ki.dwExtraInfo = HOPFLOW_PASS_THROUGH_INPUT;
+  }
+  SendInput(2, inputs, sizeof(INPUT));
+
+  // a client's drag holds a faked button; the server's is the user's real button
+  if (!m_isPrimary && m_buttons[kButtonLeft]) {
+    fakeMouseButton(kButtonLeft, false);
+  }
+  deskflow::dragprobe::stop();
 }
 
 bool MSWindowsComputer::isModifierRepeat(KeyModifierMask oldState, KeyModifierMask state, WPARAM wParam) const

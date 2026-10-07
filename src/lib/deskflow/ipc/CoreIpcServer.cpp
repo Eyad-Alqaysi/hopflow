@@ -8,6 +8,8 @@
 
 #include "base/Log.h"
 #include "common/Constants.h"
+#include "common/IpcEncoding.h"
+#include "deskflow/DragProbe.h"
 
 #include <QLocalSocket>
 
@@ -29,7 +31,16 @@ CoreIpcServer &CoreIpcServer::instance()
 
 void CoreIpcServer::processCommand(QLocalSocket *clientSocket, const QString &command, const QStringList &parts)
 {
-  Q_UNUSED(parts)
+  if (command == QStringLiteral("draggedFiles")) {
+    std::vector<std::string> paths;
+    for (const auto &path : decodeIpcList(parts.value(1))) {
+      paths.push_back(path.toStdString());
+    }
+    LOG_DEBUG("core ipc server got %zu dragged files", paths.size());
+    dragprobe::setFiles(paths);
+    return;
+  }
+
   if (command == QStringLiteral("stop")) {
     LOG_DEBUG("core ipc server got stop message");
     writeToClientSocket(clientSocket, QStringLiteral("ok"));

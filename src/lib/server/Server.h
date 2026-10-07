@@ -226,6 +226,9 @@ private:
   // according to this object or the primary client.
   bool isLockedToComputer() const;
 
+  // returns true if the active computer is dragging files
+  bool isDraggingFiles() const;
+
   // returns the jump zone of the client
   int32_t getJumpZoneSize(const BaseClientProxy *) const;
 

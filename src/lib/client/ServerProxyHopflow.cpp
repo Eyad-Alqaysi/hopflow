@@ -13,12 +13,11 @@
 #include "deskflow/DeskflowException.h"
 #include "deskflow/FileTransfer.h"
 #include "deskflow/FileTransferLocations.h"
+#include "deskflow/FileTransferNotify.h"
 #include "deskflow/ProtocolTypes.h"
 #include "deskflow/ProtocolUtil.h"
-#include "deskflow/ipc/CoreIpc.h"
 
-#include <QString>
-
+#include <algorithm>
 #include <cstring>
 
 using namespace deskflow::filetransfer;
@@ -51,8 +50,7 @@ ServerProxyHopflow::ServerProxyHopflow(Client *client, deskflow::IStream *stream
               .received = [this](
                               uint32_t id, FileTransferPurpose purpose, const std::vector<std::string> &paths
                           ) { received(id, purpose, paths); },
-              .failed = [](const std::string &message
-                        ) { ipcSendToClient(QStringLiteral("fileTransferFailed"), QString::fromStdString(message)); }
+              .failed = notifyFailed
           }
       )
 {
@@ -77,7 +75,7 @@ bool ServerProxyHopflow::onGrabClipboard(ClipboardID id)
   }
 
   auto files = getClient()->getComputer()->getClipboardFiles();
-  if (!files.empty() && files == m_clipboardReceived) {
+  if (!files.empty() && samePaths(files, m_clipboardReceived)) {
     // our own paste of received files, not a new copy
     return result;
   }
@@ -89,6 +87,55 @@ bool ServerProxyHopflow::onGrabClipboard(ClipboardID id)
     m_offeringClipboard = !files.empty();
   }
   return result;
+}
+
+bool ServerProxyHopflow::isAtEdge(int32_t x, int32_t y) const
+{
+  int32_t left = 0;
+  int32_t top = 0;
+  int32_t width = 0;
+  int32_t height = 0;
+  getClient()->getShape(left, top, width, height);
+  return x <= left || y <= top || x >= left + width - 1 || y >= top + height - 1;
+}
+
+void ServerProxyHopflow::onMouseButton(ButtonID, bool pressed)
+{
+  m_buttonsDown = pressed ? m_buttonsDown + 1 : std::max(0, m_buttonsDown - 1);
+  if (m_buttonsDown == 0 && !m_dragFiles.empty()) {
+    // released here, so the drag never left this computer
+    m_dragFiles.clear();
+    offer(FileTransferPurpose::Drop, {});
+  }
+}
+
+void ServerProxyHopflow::onMouseMoved(int32_t x, int32_t y)
+{
+  // only a drag pushed against the edge may be about to leave this computer
+  if (m_buttonsDown == 0 || !isAtEdge(x, y)) {
+    return;
+  }
+
+  auto files = getClient()->getComputer()->getDraggedFiles();
+  if (files.empty() || samePaths(files, m_dragFiles)) {
+    return;
+  }
+
+  m_dragFiles = std::move(files);
+  offer(FileTransferPurpose::Drop, m_dragFiles);
+}
+
+void ServerProxyHopflow::onLeft()
+{
+  if (m_dragFiles.empty()) {
+    return;
+  }
+
+  // the files went with the cursor; stop the drag here and release its button
+  LOG_DEBUG("dragged files left this computer, cancelling the local drag");
+  getClient()->getComputer()->cancelDrag();
+  m_dragFiles.clear();
+  m_buttonsDown = 0;
 }
 
 void ServerProxyHopflow::offer(FileTransferPurpose purpose, const std::vector<std::string> &paths)
@@ -160,6 +207,5 @@ void ServerProxyHopflow::received(uint32_t id, FileTransferPurpose purpose, cons
     removeOldClipboardTransfers(id);
   }
 
-  const auto kind = purpose == FileTransferPurpose::Clipboard ? QStringLiteral("clipboard") : QStringLiteral("drop");
-  ipcSendToClient(QStringLiteral("filesReceived"), kind + QLatin1Char('\n') + QString::fromStdString(joinPaths(paths)));
+  notifyReceived(purpose, paths);
 }

@@ -472,6 +472,11 @@ bool Computer::setClipboardFiles(const std::vector<std::string> &paths)
   return m_computer->setClipboardFiles(paths);
 }
 
+void Computer::cancelDrag()
+{
+  m_computer->cancelDrag();
+}
+
 std::vector<std::string> Computer::getClipboardFiles() const
 {
   return m_computer->getClipboardFiles();

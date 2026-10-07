@@ -181,6 +181,17 @@ public:
     return {};
   }
 
+  //! Cancel the drag in progress
+  /*!
+  Called when dragged files left this computer. Cancels the local drag so the
+  files are not also dropped here, and on a secondary computer releases the
+  mouse button the drag was holding.
+  */
+  virtual void cancelDrag()
+  {
+    // platforms without drag detection never have a drag to cancel
+  }
+
   //@}
 
   //@}

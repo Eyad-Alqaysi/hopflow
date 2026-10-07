@@ -28,9 +28,9 @@
 #include "mt/Thread.h"
 #include "platform/OSXClipboard.h"
 #include "platform/OSXEventQueueBuffer.h"
+#include "platform/OSXFilePasteboard.h"
 #include "platform/OSXKeyState.h"
 #include "platform/OSXMediaKeySupport.h"
-#include "platform/OSXPasteboardPeeker.h"
 #include "platform/OSXScreenSaver.h"
 
 #include <AppKit/NSEvent.h>
@@ -60,6 +60,9 @@ enum
 };
 
 static const double kCarbonLoopWaitTimeout = 10.0;
+
+// marks events Hopflow posts for the local system, which the event tap must not capture
+static const int64_t kPassThroughEventMarker = 0x48464c57; // "HFLW"
 
 // Synthetic mouse button and drag events require event numbers on macOS 27 and later.
 static inline bool needsEventNumber()
@@ -507,6 +510,10 @@ void OSXComputer::fakeMouseButton(ButtonID id, bool press)
   uint32_t index = mapDeskflowButtonToMac(id) - kButtonLeft;
   if (index >= NumButtonIDs) {
     return;
+  }
+
+  if (press) {
+    m_dragChangeCountAtButtonDown = deskflow::osx::dragPasteboardChangeCount();
   }
 
   CGPoint pos;
@@ -1034,6 +1041,7 @@ bool OSXComputer::onMouseButton(bool pressed, uint16_t macButton)
 
   if (pressed) {
     LOG_VERBOSE("event: button press button=%d", button);
+    m_dragChangeCountAtButtonDown = deskflow::osx::dragPasteboardChangeCount();
     if (button != kButtonNone) {
       KeyModifierMask mask = m_keyState->getActiveModifiers();
       sendEvent(EventTypes::PrimaryComputerButtonDown, ButtonInfo::alloc(button, mask));
@@ -1680,6 +1688,10 @@ CGEventRef OSXComputer::handleCGInputEvent(CGEventTapProxy proxy, CGEventType ty
 {
   OSXComputer *computer = (OSXComputer *)refcon;
 
+  if (CGEventGetIntegerValueField(event, kCGEventSourceUserData) == kPassThroughEventMarker) {
+    return event;
+  }
+
   switch (type) {
   case kCGEventLeftMouseDown:
   case kCGEventRightMouseDown:
@@ -1820,6 +1832,44 @@ void OSXComputer::waitForCarbonLoop() const
   }
 
   LOG_DEBUG("carbon loop ready");
+}
+
+std::vector<std::string> OSXComputer::getClipboardFiles() const
+{
+  return deskflow::osx::clipboardFiles();
+}
+
+bool OSXComputer::setClipboardFiles(const std::vector<std::string> &paths)
+{
+  return deskflow::osx::setClipboardFiles(paths);
+}
+
+std::vector<std::string> OSXComputer::getDraggedFiles() const
+{
+  // the drag pasteboard keeps the last drag's files, so only trust it if a drag
+  // started after the button went down
+  if (deskflow::osx::dragPasteboardChangeCount() == m_dragChangeCountAtButtonDown) {
+    return {};
+  }
+  return deskflow::osx::dragPasteboardFiles();
+}
+
+void OSXComputer::cancelDrag()
+{
+  // Escape cancels a drag; mark it so our own event tap lets it through
+  CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+  CGEventSourceSetUserData(source, kPassThroughEventMarker);
+  for (const bool down : {true, false}) {
+    CGEventRef event = CGEventCreateKeyboardEvent(source, kVK_Escape, down);
+    CGEventPost(kCGHIDEventTap, event);
+    CFRelease(event);
+  }
+  CFRelease(source);
+
+  // a client's drag holds a faked button; the server's is the user's real button
+  if (!m_isPrimary && m_buttonState.test(0)) {
+    fakeMouseButton(kButtonLeft, false);
+  }
 }
 
 std::string OSXComputer::getSecureInputApp() const

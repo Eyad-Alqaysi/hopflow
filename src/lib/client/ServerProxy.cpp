@@ -375,6 +375,7 @@ void ServerProxy::flushCompressedMouse()
   if (m_compressMouse) {
     m_compressMouse = false;
     m_client->mouseMove(m_xMouse, m_yMouse);
+    onMouseMoved(m_xMouse, m_yMouse);
   }
   if (m_compressMouseRelative) {
     m_compressMouseRelative = false;
@@ -526,6 +527,7 @@ void ServerProxy::leave()
 
   // forward
   m_client->leave();
+  onLeft();
 }
 
 void ServerProxy::setClipboard()
@@ -632,6 +634,7 @@ void ServerProxy::mouseDown()
 
   // forward
   m_client->mouseDown(static_cast<ButtonID>(id));
+  onMouseButton(static_cast<ButtonID>(id), true);
 }
 
 void ServerProxy::mouseUp()
@@ -646,6 +649,7 @@ void ServerProxy::mouseUp()
 
   // forward
   m_client->mouseUp(static_cast<ButtonID>(id));
+  onMouseButton(static_cast<ButtonID>(id), false);
 }
 
 void ServerProxy::mouseMove()
@@ -678,6 +682,7 @@ void ServerProxy::mouseMove()
   // forward
   if (!ignore) {
     m_client->mouseMove(x, y);
+    onMouseMoved(x, y);
   }
 }
 

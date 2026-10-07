@@ -19,6 +19,7 @@
 #include <mach/mach_interface.h>
 #include <mach/mach_port.h>
 
+#include <atomic>
 #include <bitset>
 #include <map>
 #include <memory>
@@ -94,6 +95,10 @@ public:
   void setSequenceNumber(uint32_t) override;
   bool isPrimary() const override;
   std::string getSecureInputApp() const override;
+  std::vector<std::string> getClipboardFiles() const override;
+  bool setClipboardFiles(const std::vector<std::string> &paths) override;
+  std::vector<std::string> getDraggedFiles() const override;
+  void cancelDrag() override;
 
   void waitForCarbonLoop() const;
 
@@ -313,8 +318,8 @@ private:
 
   IEventQueue *m_events;
 
-  std::unique_ptr<Thread> m_getDropTargetThread;
-  std::string m_dropTarget;
+  //! Drag pasteboard change count when a mouse button went down
+  std::atomic<long> m_dragChangeCountAtButtonDown = 0;
 
   Mutex *m_carbonLoopMutex;
   CondVar<bool> *m_carbonLoopReady;

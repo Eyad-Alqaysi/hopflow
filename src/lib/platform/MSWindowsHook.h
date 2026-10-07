@@ -21,6 +21,9 @@
 #define DESKFLOW_MSG_PRE_WARP WM_APP + 0x0017     // x; y
 #define DESKFLOW_MSG_SCREEN_SAVER WM_APP + 0x0018 // activated; <unused>
 #define DESKFLOW_MSG_DEBUG WM_APP + 0x0019        // data, data
+
+// dwExtraInfo of input Hopflow sends to the local system, which the hooks must not capture
+#define HOPFLOW_PASS_THROUGH_INPUT 0x48464C57 // "HFLW"
 #define DESKFLOW_MSG_INPUT_FIRST DESKFLOW_MSG_KEY
 #define DESKFLOW_MSG_INPUT_LAST DESKFLOW_MSG_PRE_WARP
 #define DESKFLOW_HOOK_LAST_MSG DESKFLOW_MSG_DEBUG
