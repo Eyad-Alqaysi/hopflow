@@ -97,6 +97,7 @@ private:
   void endRoute(uint32_t id);
   void localReceived(FileTransferPurpose purpose, uint32_t id, const std::vector<std::string> &paths);
   bool canReceive(const BaseClientProxy *computer) const;
+  bool canPasteFiles(const BaseClientProxy *computer) const;
 
   BaseClientProxy *m_primary;
   deskflow::Computer *m_computer;

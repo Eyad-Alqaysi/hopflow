@@ -23,8 +23,11 @@ namespace {
 class FakeClient : public BaseClientProxy
 {
 public:
-  FakeClient(const std::string &name, bool hopflow) : BaseClientProxy(name), m_hopflow(hopflow)
+  FakeClient(const std::string &name, bool hopflow, PeerPlatform platform = PeerPlatform::Unknown)
+      : BaseClientProxy(name),
+        m_hopflow(hopflow)
   {
+    setPlatform(platform);
   }
 
   struct Call
@@ -150,9 +153,10 @@ private:
 
 struct Setup
 {
-  FakeClient server{"server", true};
-  FakeClient a{"a", true};
-  FakeClient b{"b", true};
+  FakeClient server{"server", true, PeerPlatform::MacOS};
+  FakeClient a{"a", true, PeerPlatform::Windows};
+  FakeClient b{"b", true, PeerPlatform::MacOS};
+  FakeClient linuxClient{"linux", true, PeerPlatform::Linux};
   FakeClient deskflow{"deskflow", false};
   // the server computer is only used when it sends or receives itself
   FileTransferRouter router{&server, nullptr};
@@ -209,6 +213,19 @@ void FileTransferRouterTests::clipboardNotSentToDeskflowClient()
   s.router.onOffer(&s.a, FileTransferPurpose::Clipboard, joinPaths(kPaths));
   s.router.onEnter(&s.deskflow);
   QVERIFY(s.a.calls.empty());
+}
+
+void FileTransferRouterTests::clipboardNotSentToLinux()
+{
+  Setup s;
+  s.router.onOffer(&s.a, FileTransferPurpose::Clipboard, joinPaths(kPaths));
+  s.router.onEnter(&s.linuxClient);
+  QVERIFY(s.a.calls.empty());
+
+  // dropped files do go to Linux
+  s.router.onOffer(&s.a, FileTransferPurpose::Drop, joinPaths(kPaths));
+  s.router.onDrop(&s.linuxClient);
+  QCOMPARE(s.a.calls.size(), size_t(1));
 }
 
 void FileTransferRouterTests::newClipboardWithoutFilesClearsOffer()

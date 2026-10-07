@@ -53,6 +53,13 @@ bool FileTransferRouter::canReceive(const BaseClientProxy *computer) const
   return computer == m_primary || computer->isHopflow();
 }
 
+bool FileTransferRouter::canPasteFiles(const BaseClientProxy *computer) const
+{
+  // other platforms cannot put files on their clipboard yet
+  const auto platform = computer->getPlatform();
+  return canReceive(computer) && (platform == PeerPlatform::MacOS || platform == PeerPlatform::Windows);
+}
+
 void FileTransferRouter::onClipboardFiles(BaseClientProxy *from, const std::vector<std::string> &paths)
 {
   if (paths.empty()) {
@@ -109,7 +116,7 @@ bool FileTransferRouter::isDragging(const BaseClientProxy *computer) const
 void FileTransferRouter::onEnter(BaseClientProxy *computer)
 {
   auto &offer = m_clipboard;
-  if (!m_enabled || offer.owner == nullptr || offer.owner == computer || !canReceive(computer) ||
+  if (!m_enabled || offer.owner == nullptr || offer.owner == computer || !canPasteFiles(computer) ||
       offer.deliveredTo.contains(computer)) {
     return;
   }
