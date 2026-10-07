@@ -17,7 +17,8 @@ const auto kUrlApp = QStringLiteral("https://github.com/Eyad-Alqaysi/hopflow");
 const auto kUrlHelp = QStringLiteral("%1/issues").arg(kUrlApp);
 const auto kUrlDownload = QStringLiteral("%1/releases/latest").arg(kUrlApp);
 const auto kUrlWiki = QStringLiteral("%1#readme").arg(kUrlApp);
-const auto kUrlUpdateCheck = QStringLiteral("https://raw.githubusercontent.com/Eyad-Alqaysi/hopflow/main/LATEST_VERSION");
+const auto kUrlUpdateCheck =
+    QStringLiteral("https://raw.githubusercontent.com/Eyad-Alqaysi/hopflow/main/LATEST_VERSION");
 const auto kUrlDeskflow = QStringLiteral("https://github.com/deskflow/deskflow");
 
 #if defined(Q_OS_LINUX)
