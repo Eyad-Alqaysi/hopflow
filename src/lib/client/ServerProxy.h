@@ -71,6 +71,14 @@ protected:
     return m_stream;
   }
 
+  Client *getClient() const
+  {
+    return m_client;
+  }
+
+  //! Reply to the server's info query with this computer's info
+  virtual void queryInfo();
+
 private:
   // if compressing mouse motion then send the last motion now
   void flushCompressedMouse();
@@ -105,7 +113,6 @@ private:
   void screensaver();
   void resetOptions();
   void setOptions();
-  void queryInfo();
   void infoAcknowledgment();
 
 private:

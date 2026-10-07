@@ -8,6 +8,7 @@
 #pragma once
 
 #include "deskflow/IClient.h"
+#include "deskflow/ProtocolTypes.h"
 
 namespace deskflow {
 class IStream;
@@ -32,6 +33,12 @@ public:
   */
   void setJumpCursorPos(int32_t x, int32_t y);
 
+  //! Set the operating system the client reported
+  void setPlatform(PeerPlatform platform)
+  {
+    m_platform = platform;
+  }
+
   //@}
   //! @name accessors
   //@{
@@ -47,6 +54,21 @@ public:
   Return if this proxy is for client or primary.
   */
   virtual bool isPrimary() const
+  {
+    return false;
+  }
+
+  //! Get the operating system of the client
+  /*!
+  Unknown for clients that do not speak the Hopflow protocol.
+  */
+  virtual PeerPlatform getPlatform() const
+  {
+    return m_platform;
+  }
+
+  //! Return true if the client speaks the Hopflow protocol
+  virtual bool isHopflow() const
   {
     return false;
   }
@@ -85,6 +107,7 @@ public:
 
 private:
   std::string m_name;
+  PeerPlatform m_platform = PeerPlatform::Unknown;
   int32_t m_x = 0;
   int32_t m_y = 0;
 };

@@ -14,6 +14,7 @@
 #include "client/ServerProxy.h"
 #include "client/ServerProxy1_7.h"
 #include "client/ServerProxy1_8.h"
+#include "client/ServerProxyHopflow.h"
 #include "common/NetworkProtocol.h"
 #include "common/Settings.h"
 #include "deskflow/Clipboard.h"
@@ -483,6 +484,9 @@ bool Client::setupComputer(int16_t protocolMinor)
   case 8:
     m_server = new ServerProxy1_8(this, m_stream, m_events);
     break;
+  case kProtocolMinorVersion:
+    m_server = new ServerProxyHopflow(this, m_stream, m_events);
+    break;
   default:
     break;
   }
@@ -693,9 +697,8 @@ void Client::handleHello()
     return;
   }
 
-  int16_t helloBackMinor = kProtocolMinorVersion;
-  if (serverMinor < kProtocolMinorVersion) {
-    helloBackMinor = serverMinor;
+  const int16_t helloBackMinor = clientProtocolMinorVersion(serverMinor);
+  if (helloBackMinor != kProtocolMinorVersion) {
     LOG_INFO(
         "downgrading client protocol version from %d.%d to %d.%d", //
         kProtocolMajorVersion, kProtocolMinorVersion, kProtocolMajorVersion, helloBackMinor
