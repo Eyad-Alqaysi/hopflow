@@ -57,6 +57,7 @@ protected:
 
   void toggleDefaultLockToComputerState(bool state);
   void toggleLockToComputer(bool disabled);
+  void toggleAutoSwapCtrlCmd(bool enabled);
   void toggleWin32Foreground(bool enabled);
 
   void toggleClipboard(bool enabled);
@@ -115,6 +116,7 @@ private:
   bool m_originalServerConfigIsExternal;
   bool m_win32keepForeground;
   bool m_disableLockToComputer;
+  bool m_autoSwapCtrlCmd;
   bool m_defaultLockToComputerState;
   QString m_originalServerConfigUsesExternalFile;
   ServerConfig m_serverConfig;
