@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <mfapi.h>
+#include <mferror.h>
 #include <mfidl.h>
 #include <mftransform.h>
 #include <strmif.h>
