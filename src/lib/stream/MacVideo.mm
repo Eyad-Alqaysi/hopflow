@@ -251,18 +251,28 @@ bool isRunning(EncoderState &state)
 
 VTCompressionSessionRef createEncoder(EncoderState &state, QSize size, int fps)
 {
-  NSMutableDictionary *spec = [@{
-    (__bridge NSString *)kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder : @YES
-  } mutableCopy];
+  // best first: low latency hardware, any hardware, then whatever the system has
+  NSMutableArray<NSDictionary *> *specs = [NSMutableArray array];
   if (@available(macOS 11.3, *)) {
-    spec[(__bridge NSString *)kVTVideoEncoderSpecification_EnableLowLatencyRateControl] = @YES;
+    [specs addObject:@{
+      (__bridge NSString *)kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder : @YES,
+      (__bridge NSString *)kVTVideoEncoderSpecification_EnableLowLatencyRateControl : @YES
+    }];
   }
+  [specs addObject:@{(__bridge NSString *)kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder : @YES}];
+  [specs addObject:@{}];
 
   VTCompressionSessionRef session = nullptr;
-  if (VTCompressionSessionCreate(
-          kCFAllocatorDefault, size.width(), size.height(), kCMVideoCodecType_H264, (__bridge CFDictionaryRef)spec,
-          nullptr, kCFAllocatorDefault, compressedFrame, &state, &session
-      ) != noErr) {
+  for (NSDictionary *spec in specs) {
+    if (VTCompressionSessionCreate(
+            kCFAllocatorDefault, size.width(), size.height(), kCMVideoCodecType_H264, (__bridge CFDictionaryRef)spec,
+            nullptr, kCFAllocatorDefault, compressedFrame, &state, &session
+        ) == noErr) {
+      break;
+    }
+    session = nullptr;
+  }
+  if (session == nullptr) {
     return nullptr;
   }
 
