@@ -21,6 +21,7 @@
 #include <QGuiApplication>
 #include <QMessageBox>
 #include <QScreen>
+#include <QSslSocket>
 
 using namespace hopflow::stream;
 
@@ -152,7 +153,8 @@ void ScreenShareController::applySettings()
 
   if (const auto tls = localTls()) {
     if (m_server->listen(streamPort(), *tls)) {
-      qInfo().noquote() << "accepting shared screens on port" << streamPort();
+      qInfo().noquote() << "accepting shared screens on port" << streamPort()
+                        << "(TLS:" << QSslSocket::activeBackend() + QStringLiteral(")");
     }
   } else {
     Q_EMIT notify(tr("Screen sharing needs a TLS certificate, which could not be created"));

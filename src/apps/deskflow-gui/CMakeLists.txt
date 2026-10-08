@@ -83,6 +83,20 @@ if(WIN32)
       $<TARGET_FILE_DIR:${target}>
   )
 
+  # windeployqt leaves out Qt's OpenSSL TLS plugin; screen sharing needs it, as
+  # Schannel drops connections that present Hopflow's self-signed certificates
+  set(QT_OPENSSL_BACKEND "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/tls/qopensslbackend.dll")
+  if(EXISTS "${QT_OPENSSL_BACKEND}")
+    add_custom_command(
+      TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${QT_DEPENDS_DIR}/plugins/tls"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${QT_OPENSSL_BACKEND}" "${QT_DEPENDS_DIR}/plugins/tls/"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${QT_OPENSSL_BACKEND}" "$<TARGET_FILE_DIR:${target}>/plugins/tls/"
+    )
+  else()
+    message(WARNING "Qt OpenSSL TLS plugin not found at ${QT_OPENSSL_BACKEND}; screen sharing will use Schannel")
+  endif()
+
   install(
     DIRECTORY ${QT_DEPENDS_DIR}/
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
