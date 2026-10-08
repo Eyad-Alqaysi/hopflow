@@ -40,6 +40,8 @@
 	<false/>
 
 	<!-- Local Lan Entitlements -->
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Hopflow shows this screen in a window on your other computer when you choose Share Screen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app uses local network permissions for communication between a Hopflow server and clients.</string>
 	<key>com.apple.security.networking.local</key>
