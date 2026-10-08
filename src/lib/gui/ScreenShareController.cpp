@@ -86,10 +86,18 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
   );
 
   connect(m_sender.get(), &StreamSender::streaming, this, [this](const QString &viewer) {
+    m_hostsToTry.clear();
+    m_streaming = true;
     Q_EMIT notify(tr("Sharing this screen with %1").arg(viewer));
     updateActions();
   });
   connect(m_sender.get(), &StreamSender::stopped, this, [this](const QString &reason) {
+    // could not reach this address: try the next one, such as Wi-Fi after a cable
+    if (!m_streaming && !m_hostsToTry.isEmpty()) {
+      QMetaObject::invokeMethod(this, &ScreenShareController::tryNextHost, Qt::QueuedConnection);
+      return;
+    }
+    m_streaming = false;
     Q_EMIT notify(tr("Screen sharing stopped: %1").arg(reason));
     updateActions();
   });
@@ -142,24 +150,46 @@ void ScreenShareController::chooseAndShare()
 
 void ScreenShareController::share(const QString &target, const Preset &preset)
 {
+  // a list of addresses is tried in order, like the server addresses of a client
+  m_hostsToTry.clear();
+  for (const auto &host : target.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+    if (const auto trimmed = host.trimmed(); !trimmed.isEmpty()) {
+      m_hostsToTry.append(trimmed);
+    }
+  }
+  m_preset = preset;
+  m_streaming = false;
+  tryNextHost();
+}
+
+void ScreenShareController::tryNextHost()
+{
+  if (m_hostsToTry.isEmpty()) {
+    return;
+  }
+
   auto video = videoSource();
   if (!video) {
+    m_hostsToTry.clear();
     QMessageBox::information(m_window, tr("Share Screen"), tr("Screen capture is not available on this computer yet."));
     return;
   }
 
   const auto tls = localTls();
   if (!tls) {
+    m_hostsToTry.clear();
     Q_EMIT notify(tr("Screen sharing needs a TLS certificate, which could not be created"));
     return;
   }
 
-  m_sender->start(target, streamPort(), *tls, preset, std::move(video), createSystemAudioSource());
+  const auto host = m_hostsToTry.takeFirst();
+  m_sender->start(host, streamPort(), *tls, m_preset, std::move(video), createSystemAudioSource());
   updateActions();
 }
 
 void ScreenShareController::stopSharing()
 {
+  m_hostsToTry.clear();
   m_sender->stop();
   updateActions();
 }
