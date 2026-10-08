@@ -21,6 +21,8 @@ add_library(stream STATIC
   StreamSender.h
   TestPattern.cpp
   TestPattern.h
+  Yuv.cpp
+  Yuv.h
 )
 
 target_link_libraries(stream PUBLIC common net Qt6::Network Qt6::Gui)
@@ -37,4 +39,9 @@ if(APPLE)
     ${APPKIT_LIBRARY} ${COREMEDIA_LIBRARY} ${COREVIDEO_LIBRARY} ${VIDEOTOOLBOX_LIBRARY}
     "-weak_framework ScreenCaptureKit"
   )
+endif()
+
+if(WIN32)
+  target_sources(stream PRIVATE WinVideo.cpp WinVideo.h)
+  target_link_libraries(stream PRIVATE d3d11 dxgi mfplat mfuuid wmcodecdspuuid ole32 oleaut32)
 endif()

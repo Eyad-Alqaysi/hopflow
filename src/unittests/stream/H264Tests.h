@@ -20,4 +20,6 @@ private Q_SLOTS:
   void avccRejectsTruncated();
   void annexBMixedStartCodes();
   void convertsBothWays();
+  void yuvRoundTrip();
+  void yuvHonoursStride();
 };

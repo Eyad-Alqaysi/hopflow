@@ -9,6 +9,8 @@
 
 #if defined(__APPLE__)
 #include "stream/MacVideo.h"
+#elif defined(_WIN32)
+#include "stream/WinVideo.h"
 #endif
 
 namespace hopflow::stream {
@@ -19,6 +21,8 @@ std::unique_ptr<IVideoSource> createScreenVideoSource()
   if (MacScreenSource::isAvailable()) {
     return std::make_unique<MacScreenSource>();
   }
+#elif defined(_WIN32)
+  return std::make_unique<WinScreenSource>();
 #endif
   return nullptr;
 }
@@ -35,6 +39,8 @@ std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
   }
 #if defined(__APPLE__)
   return std::make_unique<MacVideoDecoder>();
+#elif defined(_WIN32)
+  return std::make_unique<WinVideoDecoder>();
 #else
   return nullptr;
 #endif
