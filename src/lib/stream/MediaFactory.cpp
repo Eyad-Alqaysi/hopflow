@@ -8,6 +8,7 @@
 #include "stream/TestPattern.h"
 
 #if defined(__APPLE__)
+#include "stream/MacAudio.h"
 #include "stream/MacVideo.h"
 #elif defined(_WIN32)
 #include "stream/WinVideo.h"
@@ -29,6 +30,11 @@ std::unique_ptr<IVideoSource> createScreenVideoSource()
 
 std::unique_ptr<IAudioSource> createSystemAudioSource()
 {
+#if defined(__APPLE__)
+  if (MacSystemAudioSource::isAvailable()) {
+    return std::make_unique<MacSystemAudioSource>();
+  }
+#endif
   return nullptr;
 }
 
@@ -48,7 +54,11 @@ std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
 
 std::unique_ptr<IAudioSink> createAudioSink(AudioCodec)
 {
+#if defined(__APPLE__)
+  return std::make_unique<MacAudioSink>();
+#else
   return std::make_unique<SilentAudioSink>();
+#endif
 }
 
 } // namespace hopflow::stream
