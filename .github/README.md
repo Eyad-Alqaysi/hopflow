@@ -28,6 +28,7 @@ Hopflow adds a few features Deskflow has chosen not to include.
 | **Automatic Ctrl ↔ Cmd swap between Mac and Windows** | Manual per screen | ✅ |
 | **Copy files on one computer, paste on another** | ❌ | ✅ |
 | **Drag files across the screen edge** | ❌ | ✅ |
+| **Show a screen (with sound) in a window on the other computer** | ❌ | ✅ |
 
 The new features need Hopflow on both computers. A Hopflow computer still connects to a stock
 Deskflow, Input Leap, Barrier or Synergy 1 computer; the new features are simply off for that one.
@@ -51,6 +52,28 @@ Drag files from Finder or Explorer past the edge of the screen. The drag carries
 computer, and when you let go the files are saved to `Downloads/Hopflow` and shown in
 Finder or Explorer. On Windows the Hopflow window must be running (it can be minimized to the tray);
 it is what detects the drag.
+
+### Share your screen into a window
+
+Show one computer's screen, with its sound, in a window on the other. For example, to share your
+Mac's screen on Discord from your Windows PC:
+
+1. On the Mac, choose **Share Screen…** from the Hopflow menu or tray icon.
+2. Pick the PC, a resolution (720p, 1080p or native) and a frame rate (30, 60 or the display's own),
+   then click **Share**.
+3. A window called **Hopflow – <your Mac> screen** opens on the PC. In Discord, share that window.
+   Double-click it for full screen.
+
+It works the other way round too. Sharing uses its own encrypted connection on TCP port 24802, so
+it never slows down the mouse and keyboard. Computers that are already paired trust each other;
+anyone else has to be allowed first, after you compare fingerprints. Video is H.264 and sound AAC,
+both encoded by the computer's own hardware or system codecs, and the stream lowers its quality by
+itself when the network can't keep up.
+
+- **macOS:** Hopflow needs **Screen Recording** permission (Privacy & Security). Sharing the screen
+  needs macOS 12.3 or later; sharing sound needs macOS 13 or later.
+- **Windows:** the lock screen and UAC prompts show as black, as Windows hides them from capture.
+- When sharing from the server, pick the client by name, or type its IP address.
 
 ### Limits and safety
 
