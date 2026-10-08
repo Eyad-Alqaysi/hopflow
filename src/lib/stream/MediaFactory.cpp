@@ -7,13 +7,19 @@
 #include "stream/MediaInterfaces.h"
 #include "stream/TestPattern.h"
 
-namespace hopflow::stream {
+#if defined(__APPLE__)
+#include "stream/MacVideo.h"
+#endif
 
-// platform capture and codecs are added per platform; until then only the
-// JPEG test path is available
+namespace hopflow::stream {
 
 std::unique_ptr<IVideoSource> createScreenVideoSource()
 {
+#if defined(__APPLE__)
+  if (MacScreenSource::isAvailable()) {
+    return std::make_unique<MacScreenSource>();
+  }
+#endif
   return nullptr;
 }
 
@@ -27,7 +33,11 @@ std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
   if (codec == VideoCodec::Jpeg) {
     return std::make_unique<JpegDecoder>();
   }
+#if defined(__APPLE__)
+  return std::make_unique<MacVideoDecoder>();
+#else
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IAudioSink> createAudioSink(AudioCodec)

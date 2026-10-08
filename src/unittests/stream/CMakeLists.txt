@@ -20,3 +20,21 @@ create_test(
   SOURCE StreamLoopbackTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
+
+create_test(
+  NAME H264Tests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE H264Tests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+if(APPLE)
+  create_test(
+    NAME MacVideoTests
+    DEPENDS stream
+    LIBS base arch ${extra_libs}
+    SOURCE MacVideoTests.cpp
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+  )
+endif()
