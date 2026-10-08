@@ -10,6 +10,7 @@
 #include "stream/WinVideo.h"
 
 #include "stream/H264.h"
+#include "stream/WinMedia.h"
 #include "stream/Yuv.h"
 
 #include <windows.h>
@@ -35,35 +36,11 @@
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
+using namespace hopflow::stream::win;
 
 namespace hopflow::stream {
 
 namespace {
-
-constexpr int64_t kHundredNsPerUs = 10;
-
-QString hresultText(const char *what, HRESULT hr)
-{
-  return QStringLiteral("%1 failed (0x%2)").arg(QString::fromLatin1(what)).arg(uint32_t(hr), 8, 16, QLatin1Char('0'));
-}
-
-void setCodecValue(ICodecAPI *codec, const GUID &key, uint32_t value)
-{
-  VARIANT variant;
-  VariantInit(&variant);
-  variant.vt = VT_UI4;
-  variant.ulVal = value;
-  codec->SetValue(&key, &variant);
-}
-
-void setCodecFlag(ICodecAPI *codec, const GUID &key, bool value)
-{
-  VARIANT variant;
-  VariantInit(&variant);
-  variant.vt = VT_BOOL;
-  variant.boolVal = value ? VARIANT_TRUE : VARIANT_FALSE;
-  codec->SetValue(&key, &variant);
-}
 
 ComPtr<IMFMediaType> videoType(const GUID &subtype, UINT32 width, UINT32 height, UINT32 fps)
 {
@@ -79,59 +56,6 @@ ComPtr<IMFMediaType> videoType(const GUID &subtype, UINT32 width, UINT32 height,
   MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
   return type;
 }
-
-ComPtr<IMFSample> sampleWithBuffer(DWORD size)
-{
-  ComPtr<IMFSample> sample;
-  ComPtr<IMFMediaBuffer> buffer;
-  if (FAILED(MFCreateSample(&sample)) || FAILED(MFCreateMemoryBuffer(size, &buffer))) {
-    return nullptr;
-  }
-  sample->AddBuffer(buffer.Get());
-  return sample;
-}
-
-QByteArray sampleBytes(IMFSample *sample)
-{
-  ComPtr<IMFMediaBuffer> buffer;
-  if (FAILED(sample->ConvertToContiguousBuffer(&buffer))) {
-    return {};
-  }
-  BYTE *data = nullptr;
-  DWORD length = 0;
-  if (FAILED(buffer->Lock(&data, nullptr, &length))) {
-    return {};
-  }
-  QByteArray bytes(reinterpret_cast<const char *>(data), static_cast<qsizetype>(length));
-  buffer->Unlock();
-  return bytes;
-}
-
-//! Media Foundation needs starting on every thread that uses it
-class MediaFoundationScope
-{
-public:
-  MediaFoundationScope()
-  {
-    m_com = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
-    m_mf = SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_LITE));
-  }
-  MediaFoundationScope(const MediaFoundationScope &) = delete;
-  MediaFoundationScope &operator=(const MediaFoundationScope &) = delete;
-  ~MediaFoundationScope()
-  {
-    if (m_mf) {
-      MFShutdown();
-    }
-    if (m_com) {
-      CoUninitialize();
-    }
-  }
-
-private:
-  bool m_com = false;
-  bool m_mf = false;
-};
 
 //! The Microsoft H.264 encoder, set up for screen sharing
 class H264Encoder

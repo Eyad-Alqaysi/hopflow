@@ -45,6 +45,6 @@ if(APPLE)
 endif()
 
 if(WIN32)
-  target_sources(stream PRIVATE WinVideo.cpp WinVideo.h)
+  target_sources(stream PRIVATE WinAudio.cpp WinAudio.h WinMedia.cpp WinMedia.h WinVideo.cpp WinVideo.h)
   target_link_libraries(stream PRIVATE d3d11 dxgi mfplat mfuuid wmcodecdspuuid ole32 oleaut32)
 endif()

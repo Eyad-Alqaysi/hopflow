@@ -11,6 +11,7 @@
 #include "stream/MacAudio.h"
 #include "stream/MacVideo.h"
 #elif defined(_WIN32)
+#include "stream/WinAudio.h"
 #include "stream/WinVideo.h"
 #endif
 
@@ -34,6 +35,8 @@ std::unique_ptr<IAudioSource> createSystemAudioSource()
   if (MacSystemAudioSource::isAvailable()) {
     return std::make_unique<MacSystemAudioSource>();
   }
+#elif defined(_WIN32)
+  return std::make_unique<WinSystemAudioSource>();
 #endif
   return nullptr;
 }
@@ -56,6 +59,8 @@ std::unique_ptr<IAudioSink> createAudioSink(AudioCodec)
 {
 #if defined(__APPLE__)
   return std::make_unique<MacAudioSink>();
+#elif defined(_WIN32)
+  return std::make_unique<WinAudioSink>();
 #else
   return std::make_unique<SilentAudioSink>();
 #endif
