@@ -219,6 +219,23 @@ bool StreamServer::listen(quint16 port, const QSslConfiguration &config)
     }
     socket->ignoreSslErrors();
   });
+  // Schannel can end a handshake without a socket error, so log what the TLS layer says
+  connect(
+      m_server, &QSslServer::alertSent, this,
+      [](QSslSocket *, QSsl::AlertLevel, QSsl::AlertType, const QString &text) {
+        qWarning().noquote() << "screen sharing: TLS alert sent:" << text;
+      }
+  );
+  connect(
+      m_server, &QSslServer::alertReceived, this,
+      [](QSslSocket *, QSsl::AlertLevel, QSsl::AlertType, const QString &text) {
+        qWarning().noquote() << "screen sharing: TLS alert received:" << text;
+      }
+  );
+  connect(m_server, &QSslServer::handshakeInterruptedOnError, this, [](QSslSocket *socket, const QSslError &sslError) {
+    qWarning().noquote() << "screen sharing: TLS handshake interrupted:" << sslError.errorString();
+    socket->continueInterruptedHandshake();
+  });
   connect(m_server, &QSslServer::errorOccurred, this, [this](QSslSocket *socket, QAbstractSocket::SocketError) {
     const auto reason = socket ? socket->errorString() : QString();
     qWarning().noquote() << "screen sharing: incoming connection failed:" << reason;
