@@ -31,6 +31,14 @@ create_test(
 
 if(APPLE)
   create_test(
+    NAME MacAudioTests
+    DEPENDS stream
+    LIBS base arch ${extra_libs}
+    SOURCE MacAudioTests.cpp
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+  )
+
+  create_test(
     NAME MacVideoTests
     DEPENDS stream
     LIBS base arch ${extra_libs}
@@ -38,3 +46,11 @@ if(APPLE)
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
   )
 endif()
+
+create_test(
+  NAME AudioBufferTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE AudioBufferTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
