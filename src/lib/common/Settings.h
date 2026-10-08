@@ -126,6 +126,15 @@ public:
     inline static const auto XdpRestoreToken = QStringLiteral("server/xdpRestoreToken");
   };
 
+  struct Stream
+  {
+    inline static const auto AllowViewing = QStringLiteral("stream/allowViewing");
+    inline static const auto Audio = QStringLiteral("stream/audio");
+    inline static const auto FrameRate = QStringLiteral("stream/frameRate");
+    inline static const auto Port = QStringLiteral("stream/port");
+    inline static const auto Resolution = QStringLiteral("stream/resolution");
+  };
+
   struct Computer
   {
     inline static const auto Aliases = QStringLiteral("computer_%1/aliases");
@@ -208,6 +217,7 @@ public:
   static QString tlsDir();
   static QString tlsTrustedServersDb();
   static QString tlsTrustedClientsDb();
+  static QString tlsTrustedScreensDb();
   static QString logLevelText();
   static QSettingsProxy &proxy();
   static NetworkProtocol networkProtocol();
@@ -341,6 +351,11 @@ private:
     , Server::SwitchDelay
     , Server::SwitchDoubleTap
     , Server::Win32KeepForeground
+    , Stream::AllowViewing
+    , Stream::Audio
+    , Stream::FrameRate
+    , Stream::Port
+    , Stream::Resolution
   };
 
   // When checking the default values this list contains the ones that default to false.
@@ -384,6 +399,8 @@ private:
     , Server::EnableClipboard
     , Server::EnableFileTransfer
     , Server::Win32KeepForeground
+    , Stream::AllowViewing
+    , Stream::Audio
   };
 
   // Settings saved in our State file
