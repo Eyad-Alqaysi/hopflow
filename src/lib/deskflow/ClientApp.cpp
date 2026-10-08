@@ -224,6 +224,15 @@ void ClientApp::handleClientDisconnected()
 {
   m_retryCount = 0;
   LOG_DEBUG("disconnected from server");
+
+  // start again from the first address, so a preferred link that came back
+  // (a direct cable, say) is used rather than the fallback it dropped to
+  if (m_currentServerIndex != 0) {
+    LOG_INFO("trying the first server address again");
+  }
+  m_currentServerIndex = 0;
+  m_lastServerAddressIndex = 0;
+
   ipcSendConnectionState(deskflow::core::ConnectionState::Disconnected);
   if (!m_suspended) {
     scheduleClientRestart(retryTime());
