@@ -1438,6 +1438,50 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
 </context>
 <context>
+    <name>hopflow::stream::PeerGate</name>
+    <message>
+        <source>the other computer did not identify itself</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamConnection</name>
+    <message>
+        <source>the other computer disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the other computer stopped sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamSender</name>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamServer</name>
+    <message>
+        <source>a connection failed during the TLS handshake</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cannot listen on port %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>i18n</name>
     <message>
         <source>LocalizedName</source>
