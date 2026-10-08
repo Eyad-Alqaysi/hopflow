@@ -56,6 +56,7 @@ Q_SIGNALS:
 private:
   void chooseAndShare();
   void share(const QString &target, const hopflow::stream::Preset &preset);
+  void tryNextHost();
   void stopSharing();
   void updateActions();
   void onViewerConnected(hopflow::stream::StreamConnection *connection);
@@ -69,4 +70,7 @@ private:
   std::unique_ptr<hopflow::stream::StreamSender> m_sender;
   std::unique_ptr<hopflow::stream::StreamReceiver> m_receiver;
   QPointer<ScreenViewerWindow> m_viewer;
+  QStringList m_hostsToTry;
+  hopflow::stream::Preset m_preset;
+  bool m_streaming = false;
 };
