@@ -32,6 +32,7 @@ class QLocalServer;
 class DeskflowApplication;
 class LogDock;
 class DragProbeWindow;
+class ScreenShareController;
 class StatusBar;
 
 namespace Ui {
@@ -187,6 +188,8 @@ private:
 
   LogDock *m_logDock;
   DragProbeWindow *m_dragProbe;
+  ScreenShareController *m_screenShare = nullptr;
+  QStringList m_connectedClients;
   StatusBar *m_statusBar = nullptr;
 
   // Window Menu

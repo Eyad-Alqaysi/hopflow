@@ -16,6 +16,8 @@ endif()
 add_library(${target} STATIC
   ${platform_sources}
   ComputerSetupModel.cpp
+  ScreenShareController.cpp
+  ScreenShareController.h
   ComputerSetupModel.h
   Diagnostic.cpp
   Diagnostic.h
@@ -67,6 +69,8 @@ add_library(${target} STATIC
   dialogs/ServerConfigDialog.h
   dialogs/ServerConfigDialog.ui
   dialogs/SettingsDialog.cpp
+  dialogs/ShareScreenDialog.cpp
+  dialogs/ShareScreenDialog.h
   dialogs/SettingsDialog.h
   dialogs/SettingsDialog.ui
   ipc/IpcClient.cpp
@@ -112,6 +116,8 @@ add_library(${target} STATIC
   widgets/RemoveComputerWidget.cpp
   widgets/RemoveComputerWidget.h
   widgets/SearchWidget.h
+  widgets/ScreenViewerWindow.cpp
+  widgets/ScreenViewerWindow.h
   widgets/SearchWidget.cpp
   widgets/StatusBar.cpp
   widgets/StatusBar.h
@@ -124,5 +130,6 @@ target_link_libraries(${target}
     common
     platform
     net
+    stream
     Qt6::Widgets
 )
