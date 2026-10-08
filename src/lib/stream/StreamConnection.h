@@ -17,6 +17,13 @@ class QSslServer;
 
 namespace hopflow::stream {
 
+//! Use OpenSSL for screen sharing TLS; call before any other TLS use in the process
+/*!
+Returns false if OpenSSL is not available, in which case the platform's own
+TLS is used.
+*/
+bool preferOpenSslBackend();
+
 //! An encrypted, trusted connection carrying stream frames
 class StreamConnection : public QObject
 {

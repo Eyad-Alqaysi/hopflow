@@ -1613,7 +1613,7 @@ L&apos;abilitazione di questa impostazione disabiliterà l&apos;interfaccia graf
 <context>
     <name>hopflow::stream::StreamServer</name>
     <message>
-        <source>a connection failed during the TLS handshake</source>
+        <source>a computer could not connect to share its screen: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
