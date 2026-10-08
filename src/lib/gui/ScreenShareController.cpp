@@ -76,7 +76,10 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
   connect(m_stopAction, &QAction::triggered, this, &ScreenShareController::stopSharing);
 
   connect(m_server.get(), &StreamServer::connectionReady, this, &ScreenShareController::onViewerConnected);
-  connect(m_server.get(), &StreamServer::error, this, &ScreenShareController::notify);
+  connect(m_server.get(), &StreamServer::error, this, [this](const QString &message) {
+    qWarning().noquote() << "screen sharing:" << message;
+    Q_EMIT notify(message);
+  });
   connect(
       m_server.get(), &StreamServer::approvalNeeded, this,
       [this](const QByteArray &fingerprint, const QString &from) {
@@ -86,20 +89,34 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
   );
 
   connect(m_sender.get(), &StreamSender::streaming, this, [this](const QString &viewer) {
+    qInfo().noquote() << "screen sharing connected to" << viewer;
     m_hostsToTry.clear();
     m_streaming = true;
     Q_EMIT notify(tr("Sharing this screen with %1").arg(viewer));
     updateActions();
   });
   connect(m_sender.get(), &StreamSender::stopped, this, [this](const QString &reason) {
+    qInfo().noquote() << "screen sharing stopped:" << reason;
     // could not reach this address: try the next one, such as Wi-Fi after a cable
     if (!m_streaming && !m_hostsToTry.isEmpty()) {
       QMetaObject::invokeMethod(this, &ScreenShareController::tryNextHost, Qt::QueuedConnection);
       return;
     }
+
     m_streaming = false;
-    Q_EMIT notify(tr("Screen sharing stopped: %1").arg(reason));
     updateActions();
+    if (reason == tr("stopped")) {
+      Q_EMIT notify(tr("Screen sharing stopped"));
+      return;
+    }
+
+    // anything but the user stopping it must be visible: notifications may be turned off
+    auto *box = new QMessageBox(
+        QMessageBox::Warning, tr("Share Screen"), tr("Screen sharing stopped: %1").arg(reason), QMessageBox::Ok,
+        m_window
+    );
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->open();
   });
   connect(
       m_sender.get(), &StreamSender::approvalNeeded, this,
@@ -134,7 +151,9 @@ void ScreenShareController::applySettings()
   }
 
   if (const auto tls = localTls()) {
-    m_server->listen(streamPort(), *tls);
+    if (m_server->listen(streamPort(), *tls)) {
+      qInfo().noquote() << "accepting shared screens on port" << streamPort();
+    }
   } else {
     Q_EMIT notify(tr("Screen sharing needs a TLS certificate, which could not be created"));
   }
@@ -183,6 +202,7 @@ void ScreenShareController::tryNextHost()
   }
 
   const auto host = m_hostsToTry.takeFirst();
+  qInfo().noquote() << "sharing this screen with" << host << "on port" << streamPort();
   m_sender->start(host, streamPort(), *tls, m_preset, std::move(video), createSystemAudioSource());
   updateActions();
 }
@@ -209,6 +229,7 @@ void ScreenShareController::onViewerConnected(StreamConnection *connection)
     m_receiver.reset();
   }
 
+  qInfo().noquote() << "showing a screen shared from" << connection->peerAddress();
   m_receiver = std::make_unique<StreamReceiver>(connection);
   connect(m_receiver.get(), &StreamReceiver::started, this, [this](const QString &name) {
     if (!m_viewer) {
@@ -229,6 +250,7 @@ void ScreenShareController::onViewerConnected(StreamConnection *connection)
     }
   });
   connect(m_receiver.get(), &StreamReceiver::stopped, this, [this](const QString &reason) {
+    qInfo().noquote() << "shared screen stopped:" << reason;
     if (m_viewer) {
       m_viewer->showMessage(tr("Sharing stopped: %1").arg(reason));
     }
