@@ -65,6 +65,7 @@ add_subdirectory(gui)
 add_subdirectory(net)
 add_subdirectory(platform)
 add_subdirectory(server)
+add_subdirectory(stream)
 
 #make sure to use CI only plugin on Unix
 if (UNIX AND NOT APPLE)
@@ -74,10 +75,11 @@ endif()
 #Store all test that should be run post build in the property
 get_property(PROJECT_TESTS GLOBAL PROPERTY ${CMAKE_PROJECT_NAME}_tests)
 
+# the GUI target name, as set in src/apps/deskflow-gui
 if(APPLE)
-  set(guiApp Deskflow)
+  set(guiApp ${CMAKE_PROJECT_PROPER_NAME})
 else()
-  set(guiApp deskflow)
+  string(TOLOWER "${CMAKE_PROJECT_PROPER_NAME}" guiApp)
 endif()
 
 option(SKIP_BUILD_TESTS "Skip build time test" OFF)

@@ -947,6 +947,86 @@ Additionally, check you are able to %1 the server config file: %2</source>
     </message>
 </context>
 <context>
+    <name>ScreenShareController</name>
+    <message>
+        <source>Share Screen…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Sharing Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A computer at %1 wants to show its screen here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing this screen with %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing stopped: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer at %1 has not been paired with this one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing needs a TLS certificate, which could not be created</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen capture is not available on this computer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing stopped: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only allow it if this fingerprint matches the one shown in %1 on that computer:
+
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Don&apos;t Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ScreenViewerWindow</name>
+    <message>
+        <source>%1 – %2 screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SearchWidget</name>
     <message>
         <source>Search</source>
@@ -1364,6 +1444,65 @@ Enabling this setting will disable the server config GUI.</source>
     </message>
 </context>
 <context>
+    <name>ShareScreenDialog</name>
+    <message>
+        <source>Include sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer to show this screen on. Hopflow must be running there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>720p</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1080p</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>30 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>60 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Native (display refresh rate)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The screen opens in a window on the other computer. To show it on Discord there, share that window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show on:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resolution:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frame rate:</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>StatusBar</name>
     <message>
         <source>%1 is not running</source>
@@ -1433,6 +1572,50 @@ Enabling this setting will disable the server config GUI.</source>
     <message>
         <source>Encryption Disabled</source>
         <translation>암호화 사용 안 함</translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::PeerGate</name>
+    <message>
+        <source>the other computer did not identify itself</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamConnection</name>
+    <message>
+        <source>the other computer disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the other computer stopped sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamSender</name>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>hopflow::stream::StreamServer</name>
+    <message>
+        <source>a computer could not connect to share its screen: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cannot listen on port %1: %2</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

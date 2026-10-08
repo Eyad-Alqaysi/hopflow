@@ -16,12 +16,14 @@
 #include "gui/MainWindow.h"
 #include "gui/Messages.h"
 #include "gui/StyleUtils.h"
+#include "stream/StreamConnection.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QLocalSocket>
 #include <QMessageBox>
 #include <QSharedMemory>
+#include <QSslSocket>
 
 #if defined(Q_OS_MACOS)
 #include <Carbon/Carbon.h>
@@ -149,6 +151,10 @@ int main(int argc, char *argv[])
   if (parser.isSet(resetOption)) {
     diagnostic::clearSettings(false);
   }
+
+  // must come before anything touches TLS (certificates are read during start up)
+  hopflow::stream::preferOpenSslBackend();
+  qInfo().noquote() << "screen sharing TLS backend:" << QSslSocket::activeBackend();
 
   MainWindow mainWindow;
   mainWindow.open();

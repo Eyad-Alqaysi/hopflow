@@ -378,6 +378,15 @@ QVariant Settings::defaultValue(const QString &key)
   if (key == Server::FileTransferMaxSize)
     return 2048; // MiB
 
+  if (key == Stream::Port)
+    return 24802;
+
+  if (key == Stream::Resolution)
+    return QStringLiteral("1080p");
+
+  if (key == Stream::FrameRate)
+    return QStringLiteral("30");
+
   return QVariant();
 }
 
@@ -457,6 +466,11 @@ QString Settings::tlsTrustedServersDb()
 QString Settings::tlsTrustedClientsDb()
 {
   return QFileInfo(QStringLiteral("%1/trusted-clients").arg(instance()->tlsDir())).absoluteFilePath();
+}
+
+QString Settings::tlsTrustedScreensDb()
+{
+  return QFileInfo(QStringLiteral("%1/trusted-screens").arg(instance()->tlsDir())).absoluteFilePath();
 }
 
 QString Settings::logLevelText()

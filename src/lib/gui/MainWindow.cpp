@@ -13,6 +13,7 @@
 #include "Diagnostic.h"
 #include "StyleUtils.h"
 
+#include "ScreenShareController.h"
 #include "dialogs/AboutDialog.h"
 #include "dialogs/ClientConfigDialog.h"
 #include "dialogs/FingerprintDialog.h"
@@ -149,6 +150,21 @@ MainWindow::MainWindow()
   m_actionShowHelp->setIcon(QIcon::fromTheme(QStringLiteral("question")));
   m_actionShowHelp->setMenuRole(QAction::NoRole);
   m_actionShowHelp->setShortcut(QKeySequence::HelpContents);
+
+  m_screenShare = new ScreenShareController(
+      this,
+      [this] {
+        // offer the computers on the other end of the main connection
+        if (m_coreProcess.mode() == CoreMode::Client) {
+          return QStringList{Settings::value(Settings::Client::RemoteHost).toString()};
+        }
+        return m_connectedClients;
+      },
+      this
+  );
+  connect(m_screenShare, &ScreenShareController::notify, this, [this](const QString &message) {
+    m_trayIcon->showMessage(kAppName, message);
+  });
 
   // Setup the Instance Checking
   // In case of a previous crash remove first
@@ -697,6 +713,9 @@ void MainWindow::createMenuBar()
   m_menuFile->addAction(m_actionRestartCore);
   m_menuFile->addAction(m_actionStopCore);
   m_menuFile->addSeparator();
+  m_menuFile->addAction(m_screenShare->shareAction());
+  m_menuFile->addAction(m_screenShare->stopAction());
+  m_menuFile->addSeparator();
   m_menuFile->addAction(m_actionQuit);
 
   m_menuEdit->addAction(m_actionSettings);
@@ -719,8 +738,10 @@ void MainWindow::setupTrayIcon()
 {
   auto trayMenu = new QMenu(this);
   trayMenu->addActions(
-      {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_actionMinimize, m_actionRestore, m_actionTrayQuit}
+      {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_screenShare->shareAction(),
+       m_screenShare->stopAction(), m_actionMinimize, m_actionRestore, m_actionTrayQuit}
   );
+  trayMenu->insertSeparator(m_screenShare->shareAction());
   trayMenu->insertSeparator(m_actionMinimize);
   trayMenu->insertSeparator(m_actionTrayQuit);
   m_trayIcon->setContextMenu(trayMenu);
@@ -1263,6 +1284,7 @@ bool MainWindow::generateCertificate()
 
 void MainWindow::serverClientsChanged(const QStringList &clients)
 {
+  m_connectedClients = clients;
   if (m_coreProcess.mode() != CoreMode::Server || !m_coreProcess.isStarted())
     return;
   m_statusBar->setServerClients(clients);
