@@ -967,6 +967,14 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen sharing stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Screen sharing stopped: %1</source>
         <translation type="unfinished"></translation>
     </message>
