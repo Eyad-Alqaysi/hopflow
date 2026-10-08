@@ -9,6 +9,7 @@
 #include "stream/StreamPeers.h"
 
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QSslServer>
 
 namespace hopflow::stream {
@@ -210,8 +211,18 @@ bool StreamServer::listen(quint16 port, const QSslConfiguration &config)
       }
     }
   });
-  connect(m_server, &QSslServer::errorOccurred, this, [this](QSslSocket *, QAbstractSocket::SocketError) {
-    Q_EMIT error(tr("a connection failed during the TLS handshake"));
+  // peers use self-signed certificates; trust is decided by fingerprint once the handshake is done
+  connect(m_server, &QSslServer::sslErrors, this, [](QSslSocket *socket, const QList<QSslError> &errors) {
+    for (const auto &sslError : errors) {
+      qInfo().noquote() << "screen sharing: accepting TLS error, checked by fingerprint instead:"
+                        << sslError.errorString();
+    }
+    socket->ignoreSslErrors();
+  });
+  connect(m_server, &QSslServer::errorOccurred, this, [this](QSslSocket *socket, QAbstractSocket::SocketError) {
+    const auto reason = socket ? socket->errorString() : QString();
+    qWarning().noquote() << "screen sharing: incoming connection failed:" << reason;
+    Q_EMIT error(tr("a computer could not connect to share its screen: %1").arg(reason));
   });
 
   if (!m_server->listen(QHostAddress::Any, port)) {
@@ -252,6 +263,19 @@ StreamClient::StreamClient(QStringList databases, QString approvedDatabase, QObj
   connect(&m_gate, &PeerGate::accepted, this, &StreamClient::connected);
   connect(&m_gate, &PeerGate::approvalNeeded, this, &StreamClient::approvalNeeded);
   connect(&m_gate, &PeerGate::rejected, this, &StreamClient::failed);
+}
+
+bool preferOpenSslBackend()
+{
+  // the main connection uses OpenSSL; use it here too rather than Schannel or
+  // Secure Transport, so every platform behaves the same
+  // asking for the active backend would pick a default and lock it in, so set it first
+  const auto backend = QStringLiteral("openssl");
+  if (QSslSocket::availableBackends().contains(backend) && QSslSocket::setActiveBackend(backend)) {
+    return true;
+  }
+  qWarning().noquote() << "screen sharing: OpenSSL is not available, using" << QSslSocket::activeBackend();
+  return false;
 }
 
 void StreamClient::connectTo(const QString &host, quint16 port, const QSslConfiguration &config)
