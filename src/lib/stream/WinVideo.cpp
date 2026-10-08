@@ -661,6 +661,7 @@ struct WinVideoDecoder::Impl
   UINT32 width = 0;
   UINT32 height = 0;
   UINT32 alignedHeight = 0;
+  UINT32 stride = 0;
   DWORD outputSize = 0;
   bool providesSamples = false;
 
@@ -677,10 +678,17 @@ struct WinVideoDecoder::Impl
         UINT32 w = 0;
         UINT32 h = 0;
         MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &w, &h);
+        // the decoder pads the picture to whole 16 pixel blocks (1662 wide becomes 1664),
+        // so rows are that long, or longer if it says so
         alignedHeight = std::max(h, height);
+        stride = std::max(w, width);
+        if (UINT32 defaultStride = 0;
+            SUCCEEDED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &defaultStride)) && LONG(defaultStride) > 0) {
+          stride = std::max(stride, defaultStride);
+        }
         MFT_OUTPUT_STREAM_INFO info{};
         mft->GetOutputStreamInfo(0, &info);
-        outputSize = std::max<DWORD>(info.cbSize, w * alignedHeight * 3 / 2);
+        outputSize = std::max<DWORD>(info.cbSize, stride * alignedHeight * 3 / 2);
         providesSamples = (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) != 0;
         return true;
       }
@@ -707,7 +715,7 @@ struct WinVideoDecoder::Impl
       BYTE *data = nullptr;
       if (SUCCEEDED(buffer->Lock(&data, nullptr, nullptr))) {
         image = yuv::nv12ToImage(
-            data, int(width), data + size_t(width) * alignedHeight, int(width), int(width), int(height)
+            data, int(stride), data + size_t(stride) * alignedHeight, int(stride), int(width), int(height)
         );
         buffer->Unlock();
       }
