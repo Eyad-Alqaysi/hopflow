@@ -36,6 +36,8 @@ protected:
 private:
   bool parseFileMessage(const uint8_t *code);
   void offer(FileTransferPurpose purpose, const std::vector<std::string> &paths);
+  void offerClipboard(const std::vector<std::string> &files);
+  void refreshClipboardFiles();
   void received(uint32_t id, FileTransferPurpose purpose, const std::vector<std::string> &paths);
   bool isAtEdge(int32_t x, int32_t y) const;
   deskflow::filetransfer::Transport transport();
@@ -43,7 +45,8 @@ private:
   deskflow::filetransfer::FileTransferManager m_files;
   //! Files received for the clipboard, so putting them there is not offered back
   std::vector<std::string> m_clipboardReceived;
-  bool m_offeringClipboard = false;
+  //! Files last offered from the clipboard, empty when none are on offer
+  std::vector<std::string> m_offeredClipboard;
   //! Files offered as being dragged here, while the drag lasts
   std::vector<std::string> m_dragFiles;
   int m_buttonsDown = 0;

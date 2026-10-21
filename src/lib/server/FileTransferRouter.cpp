@@ -73,17 +73,39 @@ void FileTransferRouter::onClipboardFiles(BaseClientProxy *from, const std::vect
 
   LOG_DEBUG("\"%s\" copied %zu files", from->getName().c_str(), paths.size());
   m_clipboard = Offer{from, paths, {}};
+
+  // clients report files as the cursor leaves them, so it may already be elsewhere
+  if (m_active != nullptr) {
+    onEnter(m_active);
+  }
+}
+
+bool FileTransferRouter::isOwnPaste(const std::vector<std::string> &files) const
+{
+  // our own paste of received files, not a new copy
+  return !files.empty() && samePaths(files, m_localClipboardReceived);
+}
+
+void FileTransferRouter::offerPrimaryClipboard(const std::vector<std::string> &files)
+{
+  m_localClipboardReceived.clear();
+  onClipboardFiles(m_primary, files);
 }
 
 void FileTransferRouter::onPrimaryClipboardChanged()
 {
   const auto files = m_computer->getClipboardFiles();
-  if (!files.empty() && samePaths(files, m_localClipboardReceived)) {
-    // our own paste of received files, not a new copy
-    return;
+  if (!isOwnPaste(files)) {
+    offerPrimaryClipboard(files);
   }
-  m_localClipboardReceived.clear();
-  onClipboardFiles(m_primary, files);
+}
+
+void FileTransferRouter::refreshPrimaryClipboard(const std::vector<std::string> &files)
+{
+  const auto alreadyOffered = m_clipboard.owner == m_primary && samePaths(files, m_clipboard.paths);
+  if (!isOwnPaste(files) && !alreadyOffered) {
+    offerPrimaryClipboard(files);
+  }
 }
 
 void FileTransferRouter::onClipboardTakenByOther(BaseClientProxy *by)
@@ -115,6 +137,7 @@ bool FileTransferRouter::isDragging(const BaseClientProxy *computer) const
 
 void FileTransferRouter::onEnter(BaseClientProxy *computer)
 {
+  m_active = computer;
   auto &offer = m_clipboard;
   if (!m_enabled || offer.owner == nullptr || offer.owner == computer || !canPasteFiles(computer) ||
       offer.deliveredTo.contains(computer)) {
@@ -198,6 +221,9 @@ void FileTransferRouter::localReceived(FileTransferPurpose purpose, uint32_t id,
 
 void FileTransferRouter::onClientRemoved(BaseClientProxy *client)
 {
+  if (m_active == client) {
+    m_active = nullptr;
+  }
   if (m_clipboard.owner == client) {
     m_clipboard = {};
   }

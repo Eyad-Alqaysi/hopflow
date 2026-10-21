@@ -46,6 +46,14 @@ public:
   //! The server computer's clipboard changed
   void onPrimaryClipboardChanged();
 
+  //! The cursor is leaving the server computer, which owns the clipboard holding \p files
+  /*!
+  Windows only reports a copy when the clipboard last held data from another
+  computer, so a copy can go unreported; checking on leave catches it. Offers
+  nothing when \p files are already offered.
+  */
+  void refreshPrimaryClipboard(const std::vector<std::string> &files);
+
   //! A client that does not run Hopflow took the clipboard
   void onClipboardTakenByOther(BaseClientProxy *by);
 
@@ -98,6 +106,8 @@ private:
   void localReceived(FileTransferPurpose purpose, uint32_t id, const std::vector<std::string> &paths);
   bool canReceive(const BaseClientProxy *computer) const;
   bool canPasteFiles(const BaseClientProxy *computer) const;
+  bool isOwnPaste(const std::vector<std::string> &files) const;
+  void offerPrimaryClipboard(const std::vector<std::string> &files);
 
   BaseClientProxy *m_primary;
   deskflow::Computer *m_computer;
@@ -109,6 +119,8 @@ private:
   std::map<uint32_t, Route> m_routes;
   Offer m_clipboard;
   Offer m_drag;
+  //! Where the cursor is, so an offer that arrives after it moved can still be delivered
+  BaseClientProxy *m_active = nullptr;
   //! Files the server computer received for its clipboard, so they are not offered back
   std::vector<std::string> m_localClipboardReceived;
 };

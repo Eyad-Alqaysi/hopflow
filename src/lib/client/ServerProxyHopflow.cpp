@@ -74,7 +74,7 @@ bool ServerProxyHopflow::onGrabClipboard(ClipboardID id)
     return result;
   }
 
-  auto files = getClient()->getComputer()->getClipboardFiles();
+  const auto files = getClient()->getComputer()->getClipboardFiles();
   if (!files.empty() && samePaths(files, m_clipboardReceived)) {
     // our own paste of received files, not a new copy
     return result;
@@ -82,11 +82,28 @@ bool ServerProxyHopflow::onGrabClipboard(ClipboardID id)
   m_clipboardReceived.clear();
 
   // the server only needs to hear about files, or that files are gone
-  if (!files.empty() || m_offeringClipboard) {
-    offer(FileTransferPurpose::Clipboard, files);
-    m_offeringClipboard = !files.empty();
+  if (!files.empty() || !m_offeredClipboard.empty()) {
+    offerClipboard(files);
   }
   return result;
+}
+
+void ServerProxyHopflow::offerClipboard(const std::vector<std::string> &files)
+{
+  offer(FileTransferPurpose::Clipboard, files);
+  m_offeredClipboard = files;
+}
+
+void ServerProxyHopflow::refreshClipboardFiles()
+{
+  // Windows only reports a copy when the clipboard last held data from another
+  // computer, so a copy can go unreported; checking on leave catches it
+  const auto files = getClient()->getComputer()->getClipboardFiles();
+  const auto ownPaste = !files.empty() && samePaths(files, m_clipboardReceived);
+  if (!ownPaste && !samePaths(files, m_offeredClipboard)) {
+    m_clipboardReceived.clear();
+    offerClipboard(files);
+  }
 }
 
 bool ServerProxyHopflow::isAtEdge(int32_t x, int32_t y) const
@@ -127,6 +144,8 @@ void ServerProxyHopflow::onMouseMoved(int32_t x, int32_t y)
 
 void ServerProxyHopflow::onLeft()
 {
+  refreshClipboardFiles();
+
   if (m_dragFiles.empty()) {
     return;
   }
@@ -149,6 +168,10 @@ ServerProxy::ConnectionResult ServerProxyHopflow::parseMessage(const uint8_t *co
 {
   if (parseFileMessage(code)) {
     return ConnectionResult::Okay;
+  }
+  if (memcmp(code, kMsgCClipboard, 4) == 0) {
+    // another computer copied, which replaces whatever this one offered
+    m_offeredClipboard.clear();
   }
   return ServerProxy1_8::parseMessage(code);
 }
