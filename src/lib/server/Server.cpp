@@ -487,6 +487,10 @@ void Server::switchComputer(BaseClientProxy *dst, int32_t x, int32_t y, bool for
           onClipboardChanged(m_primaryClient, id, clipboard.m_clipboardSeqNum);
         }
       }
+
+      if (m_clipboards[kClipboardClipboard].m_clipboardOwner == getName(m_primaryClient)) {
+        m_fileTransfers->refreshPrimaryClipboard(m_computer->getClipboardFiles());
+      }
     }
 
 #if defined(__APPLE__)
