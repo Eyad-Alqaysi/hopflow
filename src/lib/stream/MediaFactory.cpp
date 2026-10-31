@@ -33,14 +33,15 @@ std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId)
   return nullptr;
 }
 
-std::unique_ptr<IAudioSource> createSystemAudioSource(bool)
+std::unique_ptr<IAudioSource> createSystemAudioSource(bool, AudioLatency latency)
 {
+  [[maybe_unused]] const auto codec = latency == AudioLatency::Low ? AudioCodec::Pcm16 : AudioCodec::Aac;
 #if defined(__APPLE__)
   if (MacSystemAudioSource::isAvailable()) {
-    return std::make_unique<MacSystemAudioSource>();
+    return std::make_unique<MacSystemAudioSource>(codec);
   }
 #elif defined(_WIN32)
-  return std::make_unique<WinSystemAudioSource>();
+  return std::make_unique<WinSystemAudioSource>(codec);
 #endif
   return nullptr;
 }
@@ -79,12 +80,12 @@ QString virtualMicUnavailableReason()
   return QStringLiteral("a virtual microphone is not available on this computer yet");
 }
 
-std::unique_ptr<IAudioSink> createAudioSink(AudioCodec, AudioLatency)
+std::unique_ptr<IAudioSink> createAudioSink(AudioCodec, [[maybe_unused]] AudioLatency latency)
 {
 #if defined(__APPLE__)
-  return std::make_unique<MacAudioSink>();
+  return std::make_unique<MacAudioSink>(latency);
 #elif defined(_WIN32)
-  return std::make_unique<WinAudioSink>();
+  return std::make_unique<WinAudioSink>(latency);
 #else
   return std::make_unique<SilentAudioSink>();
 #endif

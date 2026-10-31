@@ -84,6 +84,31 @@ QByteArray aacUserData(const QByteArray &audioSpecificConfig)
   return data;
 }
 
+//! Microsoft's AAC encoder taking 16-bit PCM, or null with \p error set
+ComPtr<IMFTransform> aacEncoder(QString &error)
+{
+  ComPtr<IMFTransform> encoder;
+  if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&encoder)))) {
+    error = QStringLiteral("cannot start the sound encoder");
+    return nullptr;
+  }
+  auto pcmType = audioType(MFAudioFormat_PCM, 16);
+  pcmType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * 2);
+  pcmType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioSampleRate * kAudioChannels * 2);
+  auto aacType = audioType(MFAudioFormat_AAC, 16);
+  aacType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAacBitrate / 8);
+  aacType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
+  // Windows versions differ on which type the encoder wants first
+  const bool inputFirst =
+      SUCCEEDED(encoder->SetInputType(0, pcmType.Get(), 0)) && SUCCEEDED(encoder->SetOutputType(0, aacType.Get(), 0));
+  if (!inputFirst &&
+      (FAILED(encoder->SetOutputType(0, aacType.Get(), 0)) || FAILED(encoder->SetInputType(0, pcmType.Get(), 0)))) {
+    error = QStringLiteral("the sound encoder rejected the format");
+    return nullptr;
+  }
+  return encoder;
+}
+
 } // namespace
 
 //
@@ -92,6 +117,11 @@ QByteArray aacUserData(const QByteArray &audioSpecificConfig)
 
 struct WinSystemAudioSource::Impl
 {
+  explicit Impl(AudioCodec codec) : codec(codec)
+  {
+  }
+
+  const AudioCodec codec;
   std::thread worker;
   std::atomic<bool> running{false};
   std::mutex callbackMutex;
@@ -113,31 +143,23 @@ void WinSystemAudioSource::Impl::run()
 {
   MediaFoundationScope mediaFoundation;
 
-  // AAC encoder: 16-bit PCM in, raw AAC packets out
+  // AAC encoder: 16-bit PCM in, raw AAC packets out; low latency sound is sent as it is
   ComPtr<IMFTransform> encoder;
-  if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&encoder)))) {
-    fail(QStringLiteral("cannot start the sound encoder"));
-    return;
+  DWORD outputSize = 0;
+  bool providesSamples = false;
+  if (codec == AudioCodec::Aac) {
+    QString error;
+    encoder = aacEncoder(error);
+    if (!encoder) {
+      fail(error);
+      return;
+    }
+    MFT_OUTPUT_STREAM_INFO info{};
+    encoder->GetOutputStreamInfo(0, &info);
+    outputSize = std::max<DWORD>(info.cbSize, 4096);
+    providesSamples = (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) != 0;
+    encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
   }
-  auto pcmType = audioType(MFAudioFormat_PCM, 16);
-  pcmType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * 2);
-  pcmType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioSampleRate * kAudioChannels * 2);
-  auto aacType = audioType(MFAudioFormat_AAC, 16);
-  aacType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAacBitrate / 8);
-  aacType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
-  // Windows versions differ on which type the encoder wants first
-  const bool inputFirst =
-      SUCCEEDED(encoder->SetInputType(0, pcmType.Get(), 0)) && SUCCEEDED(encoder->SetOutputType(0, aacType.Get(), 0));
-  if (!inputFirst &&
-      (FAILED(encoder->SetOutputType(0, aacType.Get(), 0)) || FAILED(encoder->SetInputType(0, pcmType.Get(), 0)))) {
-    fail(QStringLiteral("the sound encoder rejected the format"));
-    return;
-  }
-  MFT_OUTPUT_STREAM_INFO info{};
-  encoder->GetOutputStreamInfo(0, &info);
-  const DWORD outputSize = std::max<DWORD>(info.cbSize, 4096);
-  const bool providesSamples = (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) != 0;
-  encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
 
   // loopback capture of the default output, converted by Windows to 48 kHz stereo floats
   auto client = defaultAudioClient();
@@ -155,11 +177,13 @@ void WinSystemAudioSource::Impl::run()
   }
 
   int64_t capturedFrames = 0;
+  Pcm16Packetizer packetizer;
+  std::vector<float> captured;
   std::vector<int16_t> pcm;
   while (running) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    pcm.clear();
+    captured.clear();
     UINT32 packetFrames = 0;
     while (SUCCEEDED(capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
       BYTE *data = nullptr;
@@ -170,13 +194,28 @@ void WinSystemAudioSource::Impl::run()
       }
       const auto *samples = reinterpret_cast<const float *>(data);
       for (size_t i = 0; i < size_t(frames) * kAudioChannels; ++i) {
-        const float value = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 ? 0.0f : samples[i];
-        pcm.push_back(int16_t(std::clamp(value, -1.0f, 1.0f) * 32767.0f));
+        captured.push_back((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 ? 0.0f : samples[i]);
       }
       capture->ReleaseBuffer(frames);
     }
-    if (pcm.empty()) {
+    if (captured.empty()) {
       continue;
+    }
+
+    if (codec == AudioCodec::Pcm16) {
+      const auto packets = packetizer.pack(captured.data(), uint32_t(captured.size() / kAudioChannels));
+      std::scoped_lock lock(callbackMutex);
+      if (running) {
+        for (const auto &packet : packets) {
+          onPacket(packet);
+        }
+      }
+      continue;
+    }
+
+    pcm.clear();
+    for (const float value : captured) {
+      pcm.push_back(int16_t(std::clamp(value, -1.0f, 1.0f) * 32767.0f));
     }
 
     const QByteArray bytes(reinterpret_cast<const char *>(pcm.data()), qsizetype(pcm.size() * sizeof(int16_t)));
@@ -204,7 +243,7 @@ void WinSystemAudioSource::Impl::run()
   client->Stop();
 }
 
-WinSystemAudioSource::WinSystemAudioSource() : m_impl(std::make_unique<Impl>())
+WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec) : m_impl(std::make_unique<Impl>(codec))
 {
 }
 
@@ -219,11 +258,7 @@ void WinSystemAudioSource::start(ConfigReady onConfig, PacketReady onPacket, Fai
   m_impl->onPacket = std::move(onPacket);
   m_impl->onFailed = std::move(onFailed);
   m_impl->running = true;
-  onConfig(
-      AudioConfig{
-          AudioCodec::Aac, kAudioSampleRate, kAudioChannels, aacAudioSpecificConfig(kAudioSampleRate, kAudioChannels)
-      }
-  );
+  onConfig(audioConfigFor(m_impl->codec));
   m_impl->worker = std::thread([impl = m_impl.get()] { impl->run(); });
 }
 
@@ -244,8 +279,15 @@ void WinSystemAudioSource::stop()
 
 struct WinAudioSink::Impl
 {
-  // start once 50 ms are buffered, never let more than 250 ms build up
-  PcmJitterBuffer buffer{kAudioChannels, kAudioSampleRate / 20, kAudioSampleRate / 4};
+  explicit Impl(AudioLatency latency)
+      : buffer(kAudioChannels, jitterDepth(latency)),
+        deviceBuffer(latency == AudioLatency::Low ? kHundredNsPerSecond / 50 : kHundredNsPerSecond / 20)
+  {
+  }
+
+  PcmJitterBuffer buffer;
+  //! How far ahead the sound card is fed
+  const REFERENCE_TIME deviceBuffer;
   std::unique_ptr<MediaFoundationScope> mediaFoundation;
   ComPtr<IMFTransform> decoder;
   DWORD outputSize = 0;
@@ -307,7 +349,7 @@ struct WinAudioSink::Impl
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                 AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-            kHundredNsPerSecond / 20, 0, &format.Format, nullptr
+            deviceBuffer, 0, &format.Format, nullptr
         )) ||
         FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&output))) ||
         FAILED(client->GetBufferSize(&bufferFrames)) || FAILED(client->Start())) {
@@ -336,7 +378,7 @@ struct WinAudioSink::Impl
   }
 };
 
-WinAudioSink::WinAudioSink() : m_impl(std::make_unique<Impl>())
+WinAudioSink::WinAudioSink(AudioLatency latency) : m_impl(std::make_unique<Impl>(latency))
 {
   m_impl->mediaFoundation = std::make_unique<MediaFoundationScope>();
 }
