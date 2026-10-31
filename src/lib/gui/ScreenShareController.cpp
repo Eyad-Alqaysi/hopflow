@@ -16,6 +16,7 @@
 #include "widgets/ScreenViewerWindow.h"
 
 #include <QAction>
+#include <QCursor>
 #include <QGuiApplication>
 #include <QMessageBox>
 #include <QScreen>
@@ -274,7 +275,10 @@ void ScreenShareController::showViewer(StreamReceiver *receiver, const QString &
   const auto kind = receiver->kind();
   auto &viewer = kind == SessionKind::ExtendDisplay ? m_extendViewer : m_viewer;
   if (!viewer) {
-    viewer = new ScreenViewerWindow(name);
+    viewer = new ScreenViewerWindow(
+        name, kind == SessionKind::ExtendDisplay ? ScreenViewerWindow::Mode::ExtendedDisplay
+                                                 : ScreenViewerWindow::Mode::SharedScreen
+    );
     viewer->setAttribute(Qt::WA_DeleteOnClose);
     connect(viewer, &ScreenViewerWindow::closed, this, [this, kind] {
       if (const auto &slot = m_receivers[kind]) {
@@ -286,12 +290,18 @@ void ScreenShareController::showViewer(StreamReceiver *receiver, const QString &
 
   if (kind == SessionKind::ExtendDisplay) {
     // the sender makes a display matching this monitor, so it fills it without scaling
-    auto *screen = QGuiApplication::primaryScreen();
-    const auto size = screen->size() * screen->devicePixelRatio();
-    receiver->sendDisplayInfo(DisplayInfo{
-        static_cast<uint16_t>(size.width()), static_cast<uint16_t>(size.height()),
-        static_cast<uint16_t>(screen->refreshRate()), static_cast<uint16_t>(screen->devicePixelRatio() * 100)
-    });
+    auto *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen) {
+      screen = QGuiApplication::primaryScreen();
+    }
+    const auto ratio = screen->devicePixelRatio();
+    receiver->sendDisplayInfo(
+        DisplayInfo{
+            static_cast<uint16_t>(qRound(screen->size().width() * ratio)),
+            static_cast<uint16_t>(qRound(screen->size().height() * ratio)),
+            static_cast<uint16_t>(qRound(screen->refreshRate())), static_cast<uint16_t>(qRound(ratio * 100))
+        }
+    );
     viewer->setScreen(screen);
     viewer->showFullScreen();
   } else {

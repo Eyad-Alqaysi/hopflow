@@ -6,20 +6,32 @@
 
 #pragma once
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QWidget>
 
-//! Shows another computer's shared screen
+//! Shows another computer's shared screen or extended display
 /*!
-This is the window to pick in Discord's "share a window" list. The picture
-keeps its aspect ratio with black bars; double-click toggles full screen.
+A shared screen is the window to pick in Discord's "share a window" list.
+The picture keeps its aspect ratio with black bars; double-click toggles
+full screen.
+
+An extended display covers a whole monitor with no frame and no cursor of
+its own, since the other computer draws its cursor into the picture. Esc
+pressed twice in a row closes it.
 */
 class ScreenViewerWindow : public QWidget
 {
   Q_OBJECT
 
 public:
-  explicit ScreenViewerWindow(const QString &computerName, QWidget *parent = nullptr);
+  enum class Mode
+  {
+    SharedScreen,
+    ExtendedDisplay
+  };
+
+  explicit ScreenViewerWindow(const QString &computerName, Mode mode = Mode::SharedScreen, QWidget *parent = nullptr);
 
   void showFrame(const QImage &image);
 
@@ -36,6 +48,11 @@ protected:
   void closeEvent(QCloseEvent *event) override;
 
 private:
+  bool isEscapeHintShown() const;
+
+  Mode m_mode;
   QImage m_frame;
   QString m_message;
+  //! Since Esc was last pressed on an extended display
+  QElapsedTimer m_escape;
 };

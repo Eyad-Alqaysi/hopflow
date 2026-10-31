@@ -18,6 +18,8 @@ add_library(${target} STATIC
   AudioRouteController.cpp
   AudioRouteController.h
   ComputerSetupModel.cpp
+  ExtendDisplayController.cpp
+  ExtendDisplayController.h
   ScreenShareController.cpp
   ScreenShareController.h
   StreamSupport.cpp
