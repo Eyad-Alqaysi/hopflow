@@ -128,6 +128,8 @@ sends AAC, for screen sharing.
 std::unique_ptr<IAudioSource>
 createSystemAudioSource(bool muteLocal = false, AudioLatency latency = AudioLatency::Smooth);
 std::unique_ptr<IAudioSource> createMicrophoneSource();
+//! Unmute speakers createSystemAudioSource() muted in a run that crashed; call once at start
+void restoreMutedSpeakers();
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay();
 std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec);
 std::unique_ptr<IAudioSink> createAudioSink(AudioCodec codec, AudioLatency latency = AudioLatency::Smooth);

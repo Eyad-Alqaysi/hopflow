@@ -79,6 +79,14 @@ create_test(
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
 
+create_test(
+  NAME MutedSpeakersTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE MutedSpeakersTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
 # the driver's ring buffer is header only, so it is tested on every platform
 create_test(
   NAME LoopbackRingTests

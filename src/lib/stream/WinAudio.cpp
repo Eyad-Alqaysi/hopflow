@@ -7,6 +7,7 @@
 #include "stream/WinAudio.h"
 
 #include "stream/AudioBuffer.h"
+#include "stream/MutedSpeakers.h"
 #include "stream/WinMedia.h"
 
 #include <QDebug>
@@ -52,15 +53,61 @@ WAVEFORMATEXTENSIBLE floatFormat()
   return format;
 }
 
-ComPtr<IMMDevice> defaultRenderDevice()
+ComPtr<IMMDeviceEnumerator> deviceEnumerator()
 {
   ComPtr<IMMDeviceEnumerator> enumerator;
+  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)))) {
+    return nullptr;
+  }
+  return enumerator;
+}
+
+ComPtr<IMMDevice> defaultRenderDevice()
+{
+  auto enumerator = deviceEnumerator();
   ComPtr<IMMDevice> device;
-  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
-      FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
+  if (!enumerator || FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
     return nullptr;
   }
   return device;
+}
+
+QString endpointId(IMMDevice *device)
+{
+  LPWSTR id = nullptr;
+  if (FAILED(device->GetId(&id))) {
+    return {};
+  }
+  const auto result = QString::fromWCharArray(id);
+  CoTaskMemFree(id);
+  return result;
+}
+
+//! Unmute the output devices a crashed run left muted
+void unmuteLeftovers()
+{
+  MutedSpeakers record;
+  const auto devices = record.devices();
+  if (devices.isEmpty()) {
+    return;
+  }
+  auto enumerator = deviceEnumerator();
+  if (!enumerator) {
+    return;
+  }
+  for (const auto &id : devices) {
+    const auto wideId = id.toStdWString();
+    ComPtr<IMMDevice> device;
+    ComPtr<IAudioEndpointVolume> volume;
+    // a device that cannot be reached now keeps its record, to be unmuted another time
+    if (FAILED(enumerator->GetDevice(wideId.c_str(), &device)) ||
+        FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &volume)) ||
+        FAILED(volume->SetMute(FALSE, nullptr))) {
+      continue;
+    }
+    record.remove(id);
+    qInfo().noquote() << "unmuted a sound output Hopflow had muted before it stopped unexpectedly";
+  }
 }
 
 ComPtr<IAudioClient> defaultAudioClient()
@@ -73,24 +120,54 @@ ComPtr<IAudioClient> defaultAudioClient()
   return client;
 }
 
-//! Mutes the default output while it exists, then sets it back as it was
+//! Mutes the default output while it exists, then unmutes it unless it was muted already
+/*!
+The output is noted in MutedSpeakers before it is muted, so that if Hopflow
+crashes unmuteLeftovers() unmutes it the next time.
+*/
 class EndpointMute
 {
 public:
   EndpointMute()
   {
     auto device = defaultRenderDevice();
-    if (!device || FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &m_volume)) ||
-        FAILED(m_volume->GetMute(&m_wasMuted)) || FAILED(m_volume->SetMute(TRUE, nullptr))) {
-      m_volume.Reset();
+    if (device) {
+      m_id = endpointId(device.Get());
     }
+    BOOL wasMuted = FALSE;
+    if (m_id.isEmpty() || FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &m_volume)) ||
+        FAILED(m_volume->GetMute(&wasMuted))) {
+      m_volume.Reset();
+      return;
+    }
+    // already quiet, so there is nothing to do or undo
+    if (wasMuted != FALSE) {
+      return;
+    }
+    if (!MutedSpeakers().add(m_id)) {
+      qWarning().noquote() << "cannot note that the sound output is muted, so it is left as it is";
+      m_volume.Reset();
+      return;
+    }
+    if (FAILED(m_volume->SetMute(TRUE, nullptr))) {
+      MutedSpeakers().remove(m_id);
+      m_volume.Reset();
+      return;
+    }
+    m_muted = true;
   }
 
   ~EndpointMute()
   {
-    if (m_volume) {
-      m_volume->SetMute(m_wasMuted, nullptr);
+    if (!m_muted) {
+      return;
     }
+    if (const HRESULT hr = m_volume->SetMute(FALSE, nullptr); FAILED(hr)) {
+      // the record stays, so the output is unmuted the next time Hopflow can reach it
+      qWarning().noquote() << hresultText("unmuting the sound output", hr);
+      return;
+    }
+    MutedSpeakers().remove(m_id);
   }
 
   EndpointMute(const EndpointMute &) = delete;
@@ -102,8 +179,10 @@ public:
   }
 
 private:
+  QString m_id;
   ComPtr<IAudioEndpointVolume> m_volume;
-  BOOL m_wasMuted = FALSE;
+  //! Hopflow muted the output, so it unmutes it
+  bool m_muted = false;
 };
 
 ComPtr<IMFMediaType> audioType(const GUID &subtype, UINT32 bitsPerSample)
@@ -225,6 +304,7 @@ void WinSystemAudioSource::Impl::run()
   // the speakers go quiet, but loopback still hears the mix; unmuted again when this returns
   std::optional<EndpointMute> mute;
   if (muteLocal) {
+    unmuteLeftovers();
     mute.emplace();
     if (!mute->isActive()) {
       qWarning().noquote() << "cannot mute this PC while sending its sound";
@@ -301,6 +381,15 @@ void WinSystemAudioSource::Impl::run()
 WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec, bool muteLocal)
     : m_impl(std::make_unique<Impl>(codec, muteLocal))
 {
+}
+
+void WinSystemAudioSource::restoreMutedSpeakers()
+{
+  // on a thread of its own, so COM starts there as the audio code expects, whatever the caller's thread uses
+  std::thread([] {
+    MediaFoundationScope com;
+    unmuteLeftovers();
+  }).join();
 }
 
 WinSystemAudioSource::~WinSystemAudioSource()

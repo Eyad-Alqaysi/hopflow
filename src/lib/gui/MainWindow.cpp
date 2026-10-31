@@ -35,6 +35,7 @@
 #include "gui/widgets/DragProbeWindow.h"
 #include "gui/widgets/LogDock.h"
 #include "net/FingerprintDatabase.h"
+#include "stream/MediaInterfaces.h"
 #include "widgets/StatusBar.h"
 
 #include <QCheckBox>
@@ -161,6 +162,7 @@ MainWindow::MainWindow()
     return m_connectedClients;
   };
   const auto showNotification = [this](const QString &message) { m_trayIcon->showMessage(kAppName, message); };
+  hopflow::stream::restoreMutedSpeakers();
   m_screenShare = new ScreenShareController(this, streamTargets, this);
   connect(m_screenShare, &ScreenShareController::notify, this, showNotification);
   m_soundRoute = new AudioRouteController(hopflow::stream::SessionKind::Sound, this, streamTargets, this);
