@@ -198,8 +198,10 @@ std::optional<bool> offerMode(const vdd::Mode &mode, QString &error)
   // the folder may only let administrators create files while the file itself is writable
   file.setDirectWriteFallback(true);
   if (!file.open(QIODevice::WriteOnly) || file.write(updated->toUtf8()) < 0 || !file.commit()) {
-    error = QStringLiteral("cannot add %1x%2 at %3 Hz to the Virtual Display Driver settings in %4 (%5); "
-                           "run Hopflow as administrator once, or add that resolution there yourself")
+    error = QStringLiteral(
+                "cannot add %1x%2 at %3 Hz to the Virtual Display Driver settings in %4 (%5); "
+                "run Hopflow as administrator once, or add that resolution there yourself"
+    )
                 .arg(mode.width)
                 .arg(mode.height)
                 .arg(mode.refreshHz)
@@ -289,8 +291,10 @@ bool WinVirtualDisplay::create(const DisplayInfo &info)
 
   DriverDevice device;
   if (!device.found()) {
-    return fail(QStringLiteral("Using this computer's desktop on another screen needs the free Virtual Display Driver. "
-                               "Install it from %1, then try again.")
+    return fail(QStringLiteral(
+                    "Using this computer's desktop on another screen needs the free Virtual Display Driver. "
+                    "Install it from %1, then try again."
+    )
                     .arg(QLatin1String(vdd::kReleasesUrl)));
   }
 
@@ -319,8 +323,10 @@ bool WinVirtualDisplay::create(const DisplayInfo &info)
   });
   if (!connected) {
     destroy();
-    return fail(QStringLiteral("the Virtual Display Driver did not connect a monitor; "
-                               "check that its settings ask for at least one"));
+    return fail(QStringLiteral(
+        "the Virtual Display Driver did not connect a monitor; "
+        "check that its settings ask for at least one"
+    ));
   }
 
   m_displayId = source->deviceName;

@@ -169,13 +169,7 @@ MainWindow::MainWindow()
   connect(m_micRoute, &AudioRouteController::notify, this, showNotification);
 
   m_extendDisplay = new ExtendDisplayController(
-      this,
-      [this] {
-        if (m_coreProcess.mode() == CoreMode::Client) {
-          return QStringList{Settings::value(Settings::Client::RemoteHost).toString()};
-        }
-        return m_connectedClients;
-      },
+      this, streamTargets,
       [this] {
         if (!m_coreProcess.isStarted()) {
           return false;

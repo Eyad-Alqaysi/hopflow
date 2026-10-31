@@ -213,10 +213,7 @@ void ScreenShareController::onViewerConnected(StreamConnection *connection)
   connect(raw, &StreamReceiver::stopped, this, [this, raw](const QString &reason) {
     // one that closed before its hello is dropped once its signal has returned
     QMetaObject::invokeMethod(
-        this,
-        [this, raw] {
-          std::erase_if(m_pending, [raw](const auto &pending) { return pending.get() == raw; });
-        },
+        this, [this, raw] { std::erase_if(m_pending, [raw](const auto &pending) { return pending.get() == raw; }); },
         Qt::QueuedConnection
     );
 

@@ -121,9 +121,7 @@ QByteArray encode(const AudioConfig &config)
 
 QByteArray encode(const DisplayInfo &info)
 {
-  return encodeWith([&](QDataStream &out) {
-    out << info.width << info.height << info.refreshHz << info.scalePercent;
-  });
+  return encodeWith([&](QDataStream &out) { out << info.width << info.height << info.refreshHz << info.scalePercent; });
 }
 
 QByteArray encode(const Stats &stats)

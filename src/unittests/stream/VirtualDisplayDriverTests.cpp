@@ -89,12 +89,14 @@ void VirtualDisplayDriverTests::addsMissingMode()
   const Mode mode{3024, 1964, 120};
   const auto updated = settingsOffering(kShipped, mode);
   QVERIFY(updated);
-  QVERIFY(updated->contains(QStringLiteral("        <resolution>\n"
-                                           "            <width>3024</width>\n"
-                                           "            <height>1964</height>\n"
-                                           "            <refresh_rate>120</refresh_rate>\n"
-                                           "        </resolution>\n"
-                                           "    </resolutions>")));
+  QVERIFY(updated->contains(QStringLiteral(
+      "        <resolution>\n"
+      "            <width>3024</width>\n"
+      "            <height>1964</height>\n"
+      "            <refresh_rate>120</refresh_rate>\n"
+      "        </resolution>\n"
+      "    </resolutions>"
+  )));
 
   const auto settings = parseSettings(*updated);
   QVERIFY(settings);
@@ -111,8 +113,9 @@ void VirtualDisplayDriverTests::addsModeToEmptyResolutions_data()
   QTest::addColumn<QString>("xml");
   QTest::newRow("self closing") << QStringLiteral("<vdd_settings><resolutions/></vdd_settings>");
   QTest::newRow("one line") << QStringLiteral("<vdd_settings><resolutions></resolutions></vdd_settings>");
-  QTest::newRow("absent"
-  ) << QStringLiteral("<vdd_settings>\n    <monitors><count>2</count></monitors>\n</vdd_settings>\n");
+  QTest::newRow("absent") << QStringLiteral(
+      "<vdd_settings>\n    <monitors><count>2</count></monitors>\n</vdd_settings>\n"
+  );
 }
 
 void VirtualDisplayDriverTests::addsModeToEmptyResolutions()

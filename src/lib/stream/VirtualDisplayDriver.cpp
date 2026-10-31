@@ -18,8 +18,10 @@ namespace {
 
 QString resolutionXml(const Mode &mode, const QString &indent)
 {
-  return QStringLiteral("%1<resolution>\n%1    <width>%2</width>\n%1    <height>%3</height>\n"
-                        "%1    <refresh_rate>%4</refresh_rate>\n%1</resolution>\n")
+  return QStringLiteral(
+             "%1<resolution>\n%1    <width>%2</width>\n%1    <height>%3</height>\n"
+             "%1    <refresh_rate>%4</refresh_rate>\n%1</resolution>\n"
+  )
       .arg(indent)
       .arg(mode.width)
       .arg(mode.height)
@@ -79,9 +81,11 @@ std::optional<Settings> parseSettings(const QString &xml)
 std::optional<QString> settingsOffering(const QString &xml, const Mode &mode)
 {
   if (xml.trimmed().isEmpty()) {
-    return QStringLiteral("<?xml version='1.0' encoding='utf-8'?>\n<vdd_settings>\n"
-                          "    <monitors>\n        <count>1</count>\n    </monitors>\n"
-                          "    <resolutions>\n%1    </resolutions>\n</vdd_settings>\n")
+    return QStringLiteral(
+               "<?xml version='1.0' encoding='utf-8'?>\n<vdd_settings>\n"
+               "    <monitors>\n        <count>1</count>\n    </monitors>\n"
+               "    <resolutions>\n%1    </resolutions>\n</vdd_settings>\n"
+    )
         .arg(resolutionXml(mode, QStringLiteral("        ")));
   }
 

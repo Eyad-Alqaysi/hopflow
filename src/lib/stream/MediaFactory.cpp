@@ -106,12 +106,16 @@ std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec)
 QString virtualMicUnavailableReason()
 {
 #if defined(__APPLE__)
-  return QStringLiteral("the virtual microphone driver HopflowMic.driver is not installed: run "
-                        "/Applications/Hopflow.app/Contents/Resources/install-hopflow-mic.sh in Terminal, "
-                        "then choose \"Hopflow Microphone\" in your apps");
+  return QStringLiteral(
+      "the virtual microphone driver HopflowMic.driver is not installed: run "
+      "/Applications/Hopflow.app/Contents/Resources/install-hopflow-mic.sh in Terminal, "
+      "then choose \"Hopflow Microphone\" in your apps"
+  );
 #elif defined(_WIN32)
-  return QStringLiteral("no virtual microphone found: install VB-Audio Virtual Cable from https://vb-audio.com/Cable/, "
-                        "then choose \"CABLE Output\" as the microphone in your apps");
+  return QStringLiteral(
+      "no virtual microphone found: install VB-Audio Virtual Cable from https://vb-audio.com/Cable/, "
+      "then choose \"CABLE Output\" as the microphone in your apps"
+  );
 #else
   return QStringLiteral("a virtual microphone is not available on this computer");
 #endif

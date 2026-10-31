@@ -9,7 +9,6 @@
 #include "stream/StreamProtocol.h"
 
 #include <QSize>
-#include <QString>
 
 #include <cstdint>
 
@@ -35,8 +34,6 @@ struct Preset
   FrameRate frameRate = FrameRate::Fps30;
   bool audio = true;
   SessionKind kind = SessionKind::ScreenShare;
-  //! Display to capture, from IVirtualDisplay::displayId(); empty for the main display
-  QString displayId;
 };
 
 //! Size to encode at for a screen of \p screen pixels, keeping its aspect ratio

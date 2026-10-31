@@ -404,8 +404,10 @@ OSStatus getPropertyData(
   return status;
 }
 
-OSStatus
-setPropertyData(AudioServerPlugInDriverRef, AudioObjectID, pid_t, const AudioObjectPropertyAddress *, UInt32, const void *, UInt32, const void *)
+OSStatus setPropertyData(
+    AudioServerPlugInDriverRef, AudioObjectID, pid_t, const AudioObjectPropertyAddress *, UInt32, const void *, UInt32,
+    const void *
+)
 {
   return kAudioHardwareUnsupportedOperationError;
 }
@@ -482,8 +484,10 @@ ioBoundary(AudioServerPlugInDriverRef, AudioObjectID, UInt32, UInt32, UInt32, co
   return kAudioHardwareNoError;
 }
 
-OSStatus
-doIOOperation(AudioServerPlugInDriverRef, AudioObjectID device, AudioObjectID stream, UInt32, UInt32 operation, UInt32 frames, const AudioServerPlugInIOCycleInfo *, void *mainBuffer, void *)
+OSStatus doIOOperation(
+    AudioServerPlugInDriverRef, AudioObjectID device, AudioObjectID stream, UInt32, UInt32 operation, UInt32 frames,
+    const AudioServerPlugInIOCycleInfo *, void *mainBuffer, void *
+)
 {
   if (mainBuffer == nullptr) {
     return kAudioHardwareIllegalOperationError;

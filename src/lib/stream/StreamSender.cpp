@@ -137,34 +137,34 @@ void StreamSender::startAudio()
   const bool audioOnly = m_preset.kind == SessionKind::Sound || m_preset.kind == SessionKind::Microphone;
   QPointer<StreamSender> self(this);
   m_audio->start(
-        [self](const AudioConfig &config) {
-          QMetaObject::invokeMethod(self, [self, config] {
-            if (self) {
-              self->onAudioConfig(config);
-            }
-          });
-        },
-        [self](const EncodedAudio &packet) {
-          QMetaObject::invokeMethod(self, [self, packet] {
-            if (self) {
-              self->onAudioPacket(packet);
-            }
-          });
-        },
-        [self, audioOnly](const QString &message) {
-          QMetaObject::invokeMethod(self, [self, audioOnly, message] {
-            if (!self || !self->m_audio) {
-              return;
-            }
-            if (audioOnly) {
-              self->finish(message);
-            } else {
-              // screen sharing goes on without sound
-              self->m_audio->stop();
-            }
-          });
-        }
-    );
+      [self](const AudioConfig &config) {
+        QMetaObject::invokeMethod(self, [self, config] {
+          if (self) {
+            self->onAudioConfig(config);
+          }
+        });
+      },
+      [self](const EncodedAudio &packet) {
+        QMetaObject::invokeMethod(self, [self, packet] {
+          if (self) {
+            self->onAudioPacket(packet);
+          }
+        });
+      },
+      [self, audioOnly](const QString &message) {
+        QMetaObject::invokeMethod(self, [self, audioOnly, message] {
+          if (!self || !self->m_audio) {
+            return;
+          }
+          if (audioOnly) {
+            self->finish(message);
+          } else {
+            // screen sharing goes on without sound
+            self->m_audio->stop();
+          }
+        });
+      }
+  );
 }
 
 void StreamSender::onVideoConfig(const VideoConfig &config)
