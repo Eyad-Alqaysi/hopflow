@@ -16,8 +16,12 @@
 #import <CoreAudio/CoreAudio.h>
 #import <Foundation/Foundation.h>
 
+#include <QDebug>
+
+#include <dlfcn.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <mutex>
 #include <vector>
 
@@ -28,9 +32,34 @@ namespace {
 // returned by the converter's input callback when it has nothing more to give right now
 constexpr OSStatus kNoMoreInput = 'hfnd';
 
+// this long without a single non zero sample is worth a hint about the permission
+constexpr int64_t kSilentFramesBeforeHint = int64_t(kAudioSampleRate) * 10;
+
+const QString kAllowAudioCapture = QStringLiteral(
+    "allow Hopflow in System Settings, Privacy & Security, Screen & System Audio Recording, "
+    "under System Audio Recording Only"
+);
+
 AudioObjectPropertyAddress globalAddress(AudioObjectPropertySelector selector)
 {
   return AudioObjectPropertyAddress{selector, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+}
+
+//! Whether the user has turned audio capture off for Hopflow
+/*!
+A tap that may not record still opens and delivers silence, and macOS has
+no public call that tells, so this asks TCC's own preflight. When that
+private call is missing it answers false and capture goes ahead.
+*/
+bool audioCaptureDenied()
+{
+  using Preflight = int (*)(CFStringRef, CFDictionaryRef);
+  static const auto preflight = [] {
+    void *tcc = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_LAZY);
+    return tcc == nullptr ? nullptr : reinterpret_cast<Preflight>(dlsym(tcc, "TCCAccessPreflight"));
+  }();
+  // 0 allowed, 1 denied, 2 not asked yet
+  return preflight != nullptr && preflight(CFSTR("kTCCServiceAudioCapture"), nullptr) == 1;
 }
 
 QString captureError(OSStatus status)
@@ -182,6 +211,8 @@ struct MacAudioTap::Impl
   RateConverter rate;
   std::vector<float> interleaved;
   std::unique_ptr<MacDefaultDeviceWatch> watch;
+  //! Frames of pure digital silence so far, or -1 once sound was heard or the hint was given
+  int64_t silentFrames = 0;
 
   //! Create the tap and the private device it is read through; returns why it failed, or empty
   API_AVAILABLE(macos(14.2)) QString createTap()
@@ -308,6 +339,23 @@ struct MacAudioTap::Impl
     }
   }
 
+  //! A denied tap delivers zeros, as does a Mac playing nothing, so this only hints, once; runs on the queue
+  void noticeSilence(const std::vector<float> &samples)
+  {
+    if (silentFrames < 0) {
+      return;
+    }
+    if (std::any_of(samples.begin(), samples.end(), [](float sample) { return sample != 0.0f; })) {
+      silentFrames = -1;
+      return;
+    }
+    silentFrames += int64_t(samples.size() / kAudioChannels);
+    if (silentFrames >= kSilentFramesBeforeHint) {
+      silentFrames = -1;
+      qInfo().noquote() << "no sound captured for 10 seconds; if this Mac is playing something," << kAllowAudioCapture;
+    }
+  }
+
   //! Runs on the queue
   void captured(const AudioBufferList *input)
   {
@@ -322,6 +370,7 @@ struct MacAudioTap::Impl
     interleaveStereo(*input, format, frames, interleaved);
 
     const auto samples = rate.convert(std::move(interleaved));
+    noticeSilence(samples);
     const auto packets = encoder.encode(samples.data(), UInt32(samples.size() / kAudioChannels));
     std::scoped_lock lock(mutex);
     if (running) {
@@ -358,7 +407,12 @@ void MacAudioTap::start(ConfigReady onConfig, PacketReady onPacket, Failed onFai
       onFailed(QStringLiteral("cannot start the sound encoder"));
       return;
     }
+    if (audioCaptureDenied()) {
+      onFailed(QStringLiteral("Hopflow may not record the sound playing on this Mac: %1").arg(kAllowAudioCapture));
+      return;
+    }
     std::scoped_lock lock(impl->lifecycle);
+    impl->silentFrames = 0;
     if (const auto error = impl->createTap(); !error.isEmpty()) {
       impl->destroyTap();
       onFailed(error);
