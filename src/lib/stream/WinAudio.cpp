@@ -8,6 +8,7 @@
 
 #include "stream/AudioBuffer.h"
 #include "stream/MutedSpeakers.h"
+#include "stream/WinAudioDevice.h"
 #include "stream/WinMedia.h"
 
 #include <QDebug>
@@ -52,36 +53,6 @@ WAVEFORMATEXTENSIBLE floatFormat()
   return format;
 }
 
-ComPtr<IMMDeviceEnumerator> deviceEnumerator()
-{
-  ComPtr<IMMDeviceEnumerator> enumerator;
-  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)))) {
-    return nullptr;
-  }
-  return enumerator;
-}
-
-ComPtr<IMMDevice> defaultRenderDevice()
-{
-  auto enumerator = deviceEnumerator();
-  ComPtr<IMMDevice> device;
-  if (!enumerator || FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
-    return nullptr;
-  }
-  return device;
-}
-
-QString endpointId(IMMDevice *device)
-{
-  LPWSTR id = nullptr;
-  if (FAILED(device->GetId(&id))) {
-    return {};
-  }
-  const auto result = QString::fromWCharArray(id);
-  CoTaskMemFree(id);
-  return result;
-}
-
 //! Unmute the output devices a crashed run left muted
 void unmuteLeftovers()
 {
@@ -109,17 +80,7 @@ void unmuteLeftovers()
   }
 }
 
-ComPtr<IAudioClient> defaultAudioClient()
-{
-  auto device = defaultRenderDevice();
-  ComPtr<IAudioClient> client;
-  if (!device || FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client))) {
-    return nullptr;
-  }
-  return client;
-}
-
-//! Mutes the default output while it exists, then unmutes it unless it was muted already
+//! Mutes an output while it exists, then unmutes it unless it was muted already
 /*!
 The output is noted in MutedSpeakers before it is muted, so that if Hopflow
 crashes unmuteLeftovers() unmutes it the next time.
@@ -127,12 +88,8 @@ crashes unmuteLeftovers() unmutes it the next time.
 class EndpointMute
 {
 public:
-  EndpointMute()
+  explicit EndpointMute(IMMDevice *device) : m_id(endpointId(device))
   {
-    auto device = defaultRenderDevice();
-    if (device) {
-      m_id = endpointId(device.Get());
-    }
     BOOL wasMuted = FALSE;
     if (m_id.isEmpty() || FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &m_volume)) ||
         FAILED(m_volume->GetMute(&wasMuted))) {
@@ -177,11 +134,59 @@ public:
     return m_volume != nullptr;
   }
 
+  const QString &deviceId() const
+  {
+    return m_id;
+  }
+
 private:
   QString m_id;
   ComPtr<IAudioEndpointVolume> m_volume;
   //! Hopflow muted the output, so it unmutes it
   bool m_muted = false;
+};
+
+//! Event driven loopback capture of the default output, converted by Windows to 48 kHz stereo floats
+/*!
+Windows 10 1703 and later signal loopback streams each device period.
+*/
+struct Loopback
+{
+  ComPtr<IMMDevice> device;
+  ComPtr<IAudioClient> client;
+  ComPtr<IAudioCaptureClient> capture;
+  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  bool started = false;
+
+  Loopback() = default;
+  Loopback(const Loopback &) = delete;
+  Loopback &operator=(const Loopback &) = delete;
+
+  ~Loopback()
+  {
+    if (started) {
+      client->Stop();
+    }
+    if (ready != nullptr) {
+      CloseHandle(ready);
+    }
+  }
+
+  bool start(IMMDeviceEnumerator *enumerator)
+  {
+    auto format = floatFormat();
+    device = defaultDevice(enumerator, DefaultDevice::Output);
+    started = device && SUCCEEDED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client)) &&
+              SUCCEEDED(client->Initialize(
+                  AUDCLNT_SHAREMODE_SHARED,
+                  AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                      AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                  kHundredNsPerSecond / 5, 0, &format.Format, nullptr
+              )) &&
+              SUCCEEDED(client->SetEventHandle(ready)) && SUCCEEDED(client->GetService(IID_PPV_ARGS(&capture))) &&
+              SUCCEEDED(client->Start());
+    return started;
+  }
 };
 
 ComPtr<IMFMediaType> audioType(const GUID &subtype, UINT32 bitsPerSample)
@@ -285,60 +290,75 @@ void WinSystemAudioSource::Impl::run()
     encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
   }
 
-  // event driven loopback capture of the default output, converted by Windows to 48 kHz stereo
-  // floats; Windows 10 1703 and later signal loopback streams each device period
-  auto client = defaultAudioClient();
-  auto format = floatFormat();
-  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-  ComPtr<IAudioCaptureClient> capture;
-  if (!client ||
-      FAILED(client->Initialize(
-          AUDCLNT_SHAREMODE_SHARED,
-          AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-              AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          kHundredNsPerSecond / 5, 0, &format.Format, nullptr
-      )) ||
-      FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&capture))) ||
-      FAILED(client->Start())) {
-    CloseHandle(ready);
+  auto enumerator = deviceEnumerator();
+  if (!enumerator) {
     fail(QStringLiteral("cannot capture the sound playing on this PC"));
     return;
   }
-
-  // the speakers go quiet, but loopback still hears the mix; unmuted again when this returns
-  std::optional<EndpointMute> mute;
   if (muteLocal) {
     unmuteLeftovers();
-    mute.emplace();
-    if (!mute->isActive()) {
-      qWarning().noquote() << "cannot mute this PC while sending its sound";
-    }
   }
+
+  // capture follows the default output when the user picks another one or it goes away; both
+  // the loopback and the mute are put back when this returns
+  DefaultDeviceWatch watch(enumerator.Get(), DefaultDevice::Output);
+  std::optional<Loopback> loopback;
+  std::optional<EndpointMute> mute;
+  bool restart = true;
 
   int64_t capturedFrames = 0;
   Pcm16Packetizer packetizer;
   std::vector<float> captured;
   std::vector<int16_t> pcm;
   while (running) {
+    if (restart) {
+      restart = false;
+      loopback.reset();
+      loopback.emplace();
+      if (!loopback->start(enumerator.Get())) {
+        fail(QStringLiteral("cannot capture the sound playing on this PC"));
+        break;
+      }
+      // the speakers go quiet, but loopback still hears the mix; a new output is muted in place of the old
+      if (muteLocal && (!mute || mute->deviceId() != endpointId(loopback->device.Get()))) {
+        mute.reset();
+        mute.emplace(loopback->device.Get());
+        if (!mute->isActive()) {
+          qWarning().noquote() << "cannot mute this PC while sending its sound";
+        }
+      }
+    }
+
     // nothing is signalled while nothing plays
-    if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+    const auto wake = waitForAudio(loopback->ready, watch, 200);
+    if (wake == AudioWake::DefaultChanged) {
+      restart = true;
+      continue;
+    }
+    if (wake != AudioWake::Ready) {
       continue;
     }
 
     captured.clear();
     UINT32 packetFrames = 0;
-    while (SUCCEEDED(capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
+    HRESULT hr = S_OK;
+    while (SUCCEEDED(hr = loopback->capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
       BYTE *data = nullptr;
       UINT32 frames = 0;
       DWORD flags = 0;
-      if (FAILED(capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
+      if (FAILED(hr = loopback->capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
         break;
       }
       const auto *samples = reinterpret_cast<const float *>(data);
       for (size_t i = 0; i < size_t(frames) * kAudioChannels; ++i) {
         captured.push_back((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 ? 0.0f : samples[i]);
       }
-      capture->ReleaseBuffer(frames);
+      loopback->capture->ReleaseBuffer(frames);
+    }
+    // the output was unplugged or reconfigured: carry on with whichever is the default now
+    if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+      restart = true;
+      continue;
     }
     if (captured.empty()) {
       continue;
@@ -382,8 +402,6 @@ void WinSystemAudioSource::Impl::run()
         [] { return false; }
     );
   }
-  client->Stop();
-  CloseHandle(ready);
 }
 
 WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec, bool muteLocal)
@@ -492,12 +510,25 @@ struct WinAudioSink::Impl
   void render()
   {
     MediaFoundationScope com;
-    auto client = defaultAudioClient();
+    auto enumerator = deviceEnumerator();
+    if (!enumerator) {
+      return;
+    }
+    DefaultDeviceWatch watch(enumerator.Get(), DefaultDevice::Output);
+    while (running && renderOnDefault(enumerator.Get(), watch)) {
+    }
+  }
+
+  //! Play on the default output until stopped, false, or until another output is to be used, true
+  bool renderOnDefault(IMMDeviceEnumerator *enumerator, const DefaultDeviceWatch &watch)
+  {
+    auto device = defaultDevice(enumerator, DefaultDevice::Output);
+    ComPtr<IAudioClient> client;
     auto format = floatFormat();
     HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     ComPtr<IAudioRenderClient> output;
     UINT32 bufferFrames = 0;
-    if (!client ||
+    if (!device || FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client)) ||
         FAILED(client->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
@@ -507,15 +538,23 @@ struct WinAudioSink::Impl
         FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&output))) ||
         FAILED(client->GetBufferSize(&bufferFrames)) || FAILED(client->Start())) {
       CloseHandle(ready);
-      return;
+      return false;
     }
 
+    bool follow = false;
     while (running) {
-      if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+      const auto wake = waitForAudio(ready, watch, 200);
+      if (wake == AudioWake::DefaultChanged) {
+        follow = true;
+        break;
+      }
+      if (wake != AudioWake::Ready) {
         continue;
       }
       UINT32 padding = 0;
-      if (FAILED(client->GetCurrentPadding(&padding))) {
+      if (const HRESULT hr = client->GetCurrentPadding(&padding); FAILED(hr)) {
+        // unplugged or reconfigured: carry on with whichever output is the default now
+        follow = hr == AUDCLNT_E_DEVICE_INVALIDATED;
         break;
       }
       const UINT32 frames = bufferFrames - padding;
@@ -528,6 +567,7 @@ struct WinAudioSink::Impl
     }
     client->Stop();
     CloseHandle(ready);
+    return follow;
   }
 };
 

@@ -8,6 +8,7 @@
 
 #include "stream/AudioBuffer.h"
 #include "stream/Microphone.h"
+#include "stream/WinAudioDevice.h"
 #include "stream/WinMedia.h"
 
 // defines PKEY_Device_FriendlyName here rather than expecting a library to
@@ -20,6 +21,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -49,15 +51,6 @@ WAVEFORMATEXTENSIBLE floatFormat()
   return format;
 }
 
-ComPtr<IMMDeviceEnumerator> deviceEnumerator()
-{
-  ComPtr<IMMDeviceEnumerator> enumerator;
-  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)))) {
-    return nullptr;
-  }
-  return enumerator;
-}
-
 QString friendlyName(IMMDevice *device)
 {
   ComPtr<IPropertyStore> properties;
@@ -73,6 +66,57 @@ QString friendlyName(IMMDevice *device)
   PropVariantClear(&value);
   return name;
 }
+
+//! Event driven capture of the default microphone, converted by Windows to 48 kHz stereo floats
+struct MicrophoneCapture
+{
+  ComPtr<IAudioClient> client;
+  ComPtr<IAudioCaptureClient> capture;
+  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  bool started = false;
+
+  MicrophoneCapture() = default;
+  MicrophoneCapture(const MicrophoneCapture &) = delete;
+  MicrophoneCapture &operator=(const MicrophoneCapture &) = delete;
+
+  ~MicrophoneCapture()
+  {
+    if (started) {
+      client->Stop();
+    }
+    if (ready != nullptr) {
+      CloseHandle(ready);
+    }
+  }
+
+  //! Empty once started, otherwise why it cannot
+  QString start(IMMDeviceEnumerator *enumerator)
+  {
+    auto device = defaultDevice(enumerator, DefaultDevice::Microphone);
+    if (!device) {
+      return QStringLiteral("this PC has no microphone to send");
+    }
+    const HRESULT activated = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client);
+    if (activated == E_ACCESSDENIED) {
+      return QStringLiteral(
+          "Windows does not let Hopflow use the microphone: allow desktop apps in Settings, Privacy & security, "
+          "Microphone"
+      );
+    }
+
+    auto format = floatFormat();
+    started = SUCCEEDED(activated) &&
+              SUCCEEDED(client->Initialize(
+                  AUDCLNT_SHAREMODE_SHARED,
+                  AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+                      AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                  kHundredNsPerSecond / 50, 0, &format.Format, nullptr
+              )) &&
+              SUCCEEDED(client->SetEventHandle(ready)) && SUCCEEDED(client->GetService(IID_PPV_ARGS(&capture))) &&
+              SUCCEEDED(client->Start());
+    return started ? QString() : QStringLiteral("cannot open the microphone on this PC");
+  }
+};
 
 } // namespace
 
@@ -104,54 +148,46 @@ void WinMicrophoneSource::Impl::run()
   MediaFoundationScope com;
 
   auto enumerator = deviceEnumerator();
-  ComPtr<IMMDevice> device;
-  if (!enumerator || FAILED(enumerator->GetDefaultAudioEndpoint(eCapture, eCommunications, &device))) {
+  if (!enumerator) {
     fail(QStringLiteral("this PC has no microphone to send"));
     return;
   }
-  ComPtr<IAudioClient> client;
-  const HRESULT activated = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client);
-  if (activated == E_ACCESSDENIED) {
-    fail(QStringLiteral(
-        "Windows does not let Hopflow use the microphone: allow desktop apps in Settings, Privacy & security, "
-        "Microphone"
-    ));
-    return;
-  }
 
-  // event driven capture, converted by Windows to 48 kHz stereo floats
-  auto format = floatFormat();
-  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-  ComPtr<IAudioCaptureClient> capture;
-  if (FAILED(activated) ||
-      FAILED(client->Initialize(
-          AUDCLNT_SHAREMODE_SHARED,
-          AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-              AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          kHundredNsPerSecond / 50, 0, &format.Format, nullptr
-      )) ||
-      FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&capture))) ||
-      FAILED(client->Start())) {
-    CloseHandle(ready);
-    fail(QStringLiteral("cannot open the microphone on this PC"));
-    return;
-  }
+  // capture follows the default microphone when the user picks another one or it goes away
+  DefaultDeviceWatch watch(enumerator.Get(), DefaultDevice::Microphone);
+  std::optional<MicrophoneCapture> microphone;
+  bool restart = true;
 
   int64_t capturedFrames = 0;
   std::vector<float> samples;
   while (running) {
-    if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+    if (restart) {
+      restart = false;
+      microphone.reset();
+      microphone.emplace();
+      if (const auto error = microphone->start(enumerator.Get()); !error.isEmpty()) {
+        fail(error);
+        break;
+      }
+    }
+
+    const auto wake = waitForAudio(microphone->ready, watch, 200);
+    if (wake == AudioWake::DefaultChanged) {
+      restart = true;
+      continue;
+    }
+    if (wake != AudioWake::Ready) {
       continue;
     }
 
     samples.clear();
     UINT32 packetFrames = 0;
     HRESULT hr = S_OK;
-    while (SUCCEEDED(hr = capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
+    while (SUCCEEDED(hr = microphone->capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
       BYTE *data = nullptr;
       UINT32 frames = 0;
       DWORD flags = 0;
-      if (FAILED(hr = capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
+      if (FAILED(hr = microphone->capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
         break;
       }
       const auto count = size_t(frames) * kAudioChannels;
@@ -161,11 +197,12 @@ void WinMicrophoneSource::Impl::run()
         const auto *floats = reinterpret_cast<const float *>(data);
         samples.insert(samples.end(), floats, floats + count);
       }
-      capture->ReleaseBuffer(frames);
+      microphone->capture->ReleaseBuffer(frames);
     }
+    // unplugged or reconfigured: carry on with whichever microphone is the default now
     if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
-      fail(QStringLiteral("the microphone was disconnected"));
-      break;
+      restart = true;
+      continue;
     }
     if (samples.empty()) {
       continue;
@@ -179,8 +216,6 @@ void WinMicrophoneSource::Impl::run()
       onPacket(EncodedAudio{timestamp, packet});
     }
   }
-  client->Stop();
-  CloseHandle(ready);
 }
 
 WinMicrophoneSource::WinMicrophoneSource() : m_impl(std::make_unique<Impl>())
