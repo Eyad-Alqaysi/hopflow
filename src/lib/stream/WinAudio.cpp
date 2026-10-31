@@ -21,7 +21,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -286,17 +285,22 @@ void WinSystemAudioSource::Impl::run()
     encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
   }
 
-  // loopback capture of the default output, converted by Windows to 48 kHz stereo floats
+  // event driven loopback capture of the default output, converted by Windows to 48 kHz stereo
+  // floats; Windows 10 1703 and later signal loopback streams each device period
   auto client = defaultAudioClient();
   auto format = floatFormat();
+  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   ComPtr<IAudioCaptureClient> capture;
   if (!client ||
       FAILED(client->Initialize(
           AUDCLNT_SHAREMODE_SHARED,
-          AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+          AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+              AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
           kHundredNsPerSecond / 5, 0, &format.Format, nullptr
       )) ||
-      FAILED(client->GetService(IID_PPV_ARGS(&capture))) || FAILED(client->Start())) {
+      FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&capture))) ||
+      FAILED(client->Start())) {
+    CloseHandle(ready);
     fail(QStringLiteral("cannot capture the sound playing on this PC"));
     return;
   }
@@ -316,7 +320,10 @@ void WinSystemAudioSource::Impl::run()
   std::vector<float> captured;
   std::vector<int16_t> pcm;
   while (running) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // nothing is signalled while nothing plays
+    if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+      continue;
+    }
 
     captured.clear();
     UINT32 packetFrames = 0;
@@ -376,6 +383,7 @@ void WinSystemAudioSource::Impl::run()
     );
   }
   client->Stop();
+  CloseHandle(ready);
 }
 
 WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec, bool muteLocal)
