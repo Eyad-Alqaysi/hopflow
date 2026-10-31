@@ -37,6 +37,7 @@ if(APPLE)
     SOURCE MacAudioTests.cpp
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
   )
+  target_link_libraries(MacAudioTests "-framework CoreAudio")
 
   create_test(
     NAME MacVideoTests

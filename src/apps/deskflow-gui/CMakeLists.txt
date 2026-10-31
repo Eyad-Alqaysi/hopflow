@@ -114,12 +114,13 @@ elseif(APPLE)
     if (APPLE_CODESIGN_DEV)
       configure_mac_codesign(${target})
     endif()
-    # ship the virtual microphone driver and its installer inside the app
+    # ship the virtual microphone driver and its installer inside the app; the driver is code, and
+    # PlugIns is a place codesign seals nested code, so the app's signature covers the driver's own
     add_dependencies(${target} HopflowMic)
     add_custom_command(
       TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "$<TARGET_BUNDLE_DIR:HopflowMic>" "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/HopflowMic.driver"
+        "$<TARGET_BUNDLE_DIR:HopflowMic>" "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/PlugIns/HopflowMic.driver"
       COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_SOURCE_DIR}/deploy/mac/install-hopflow-mic.sh" "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/"
     )

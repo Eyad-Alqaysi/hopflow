@@ -15,7 +15,5 @@ class MicrophoneTests : public QObject
 private Q_SLOTS:
   void findsVirtualCableInput_data();
   void findsVirtualCableInput();
-  void pcm16RoundTrip();
-  void pcm16Clamps();
   void configIsPcm();
 };

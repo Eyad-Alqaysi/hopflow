@@ -44,28 +44,39 @@ JitterDepth jitterDepth(AudioLatency latency)
   return JitterDepth{kAudioSampleRate / 20, kAudioSampleRate / 4};
 }
 
+QByteArray floatToPcm16(const float *samples, size_t count)
+{
+  QByteArray pcm(qsizetype(count * sizeof(int16_t)), Qt::Uninitialized);
+  auto *out = reinterpret_cast<int16_t *>(pcm.data());
+  for (size_t i = 0; i < count; ++i) {
+    out[i] = int16_t(std::clamp(samples[i], -1.0f, 1.0f) * 32767.0f);
+  }
+  return pcm;
+}
+
+std::vector<float> pcm16ToFloat(const QByteArray &pcm)
+{
+  const auto *in = reinterpret_cast<const int16_t *>(pcm.constData());
+  std::vector<float> samples(size_t(pcm.size()) / sizeof(int16_t));
+  for (size_t i = 0; i < samples.size(); ++i) {
+    samples[i] = float(in[i]) / 32768.0f;
+  }
+  return samples;
+}
+
 std::vector<EncodedAudio> Pcm16Packetizer::pack(const float *samples, uint32_t frames)
 {
-  for (size_t i = 0; i < size_t(frames) * kAudioChannels; ++i) {
-    m_pending.push_back(static_cast<int16_t>(std::clamp(samples[i], -1.0f, 1.0f) * 32767.0f));
-  }
+  m_pending.append(floatToPcm16(samples, size_t(frames) * kAudioChannels));
 
   std::vector<EncodedAudio> packets;
-  constexpr size_t packetSamples = size_t(kPcmFramesPerPacket) * kAudioChannels;
-  size_t offset = 0;
-  for (; m_pending.size() - offset >= packetSamples; offset += packetSamples) {
+  constexpr auto packetBytes = qsizetype(kPcmFramesPerPacket * kAudioChannels * sizeof(int16_t));
+  qsizetype offset = 0;
+  for (; m_pending.size() - offset >= packetBytes; offset += packetBytes) {
     const auto timestamp = m_packets * kPcmFramesPerPacket * 1'000'000 / kAudioSampleRate;
-    packets.push_back(
-        EncodedAudio{
-            timestamp,
-            QByteArray(
-                reinterpret_cast<const char *>(m_pending.data() + offset), qsizetype(packetSamples * sizeof(int16_t))
-            )
-        }
-    );
+    packets.push_back(EncodedAudio{timestamp, m_pending.mid(offset, packetBytes)});
     ++m_packets;
   }
-  m_pending.erase(m_pending.begin(), m_pending.begin() + std::ptrdiff_t(offset));
+  m_pending.remove(0, offset);
   return packets;
 }
 

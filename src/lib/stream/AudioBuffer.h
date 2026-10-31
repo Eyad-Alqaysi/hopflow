@@ -10,6 +10,7 @@
 
 #include <QByteArray>
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -43,6 +44,12 @@ struct JitterDepth
 //! 50 ms and 250 ms for Smooth; 20 ms and 80 ms for Low
 JitterDepth jitterDepth(AudioLatency latency);
 
+//! Interleaved floats in [-1, 1] to 16 bit PCM, clamping what is out of range
+QByteArray floatToPcm16(const float *samples, size_t count);
+
+//! 16 bit PCM to interleaved floats
+std::vector<float> pcm16ToFloat(const QByteArray &pcm);
+
 //! Turns interleaved float samples into Pcm16 packets of kPcmFramesPerPacket frames
 class Pcm16Packetizer
 {
@@ -51,7 +58,7 @@ public:
   std::vector<EncodedAudio> pack(const float *samples, uint32_t frames);
 
 private:
-  std::vector<int16_t> m_pending;
+  QByteArray m_pending;
   int64_t m_packets = 0;
 };
 

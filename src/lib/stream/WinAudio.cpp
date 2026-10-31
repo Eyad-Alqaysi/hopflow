@@ -309,7 +309,6 @@ void WinSystemAudioSource::Impl::run()
   int64_t capturedFrames = 0;
   Pcm16Packetizer packetizer;
   std::vector<float> captured;
-  std::vector<int16_t> pcm;
   while (running) {
     if (restart) {
       restart = false;
@@ -375,14 +374,9 @@ void WinSystemAudioSource::Impl::run()
       continue;
     }
 
-    pcm.clear();
-    for (const float value : captured) {
-      pcm.push_back(int16_t(std::clamp(value, -1.0f, 1.0f) * 32767.0f));
-    }
-
-    const QByteArray bytes(reinterpret_cast<const char *>(pcm.data()), qsizetype(pcm.size() * sizeof(int16_t)));
+    const auto bytes = floatToPcm16(captured.data(), captured.size());
     const auto timestamp = capturedFrames * 1'000'000 / kAudioSampleRate;
-    capturedFrames += int64_t(pcm.size() / kAudioChannels);
+    capturedFrames += int64_t(captured.size() / kAudioChannels);
     auto sample = sampleWithBytes(bytes, timestamp);
     if (!sample || FAILED(encoder->ProcessInput(0, sample.Get(), 0))) {
       continue;
@@ -499,11 +493,7 @@ struct WinAudioSink::Impl
 
   void pushPcm16(const QByteArray &bytes)
   {
-    const auto *pcm16 = reinterpret_cast<const int16_t *>(bytes.constData());
-    std::vector<float> samples(size_t(bytes.size()) / sizeof(int16_t));
-    for (size_t i = 0; i < samples.size(); ++i) {
-      samples[i] = float(pcm16[i]) / 32768.0f;
-    }
+    const auto samples = pcm16ToFloat(bytes);
     buffer.push(samples.data(), uint32_t(samples.size() / kAudioChannels));
   }
 

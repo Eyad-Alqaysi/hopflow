@@ -16,8 +16,12 @@
 #import <CoreAudio/CoreAudio.h>
 #import <Foundation/Foundation.h>
 
+#include <QDebug>
+
+#include <dlfcn.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <mutex>
 #include <vector>
 
@@ -28,23 +32,39 @@ namespace {
 // returned by the converter's input callback when it has nothing more to give right now
 constexpr OSStatus kNoMoreInput = 'hfnd';
 
+// this long without a single non zero sample is worth a hint about the permission
+constexpr int64_t kSilentFramesBeforeHint = int64_t(kAudioSampleRate) * 10;
+
+const QString kAllowAudioCapture = QStringLiteral(
+    "allow Hopflow in System Settings, Privacy & Security, Screen & System Audio Recording, "
+    "under System Audio Recording Only"
+);
+
 AudioObjectPropertyAddress globalAddress(AudioObjectPropertySelector selector)
 {
   return AudioObjectPropertyAddress{selector, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
 }
 
-AudioStreamBasicDescription stereoFloat(Float64 sampleRate)
+//! Whether the user has turned audio capture off for Hopflow
+/*!
+A tap that may not record still opens and delivers silence, and macOS has
+no public call that tells, so this asks TCC's own preflight. When that
+private call is missing it answers false and capture goes ahead.
+*/
+bool audioCaptureDenied()
 {
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = sampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = 32;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * sizeof(float);
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
+  using Preflight = int (*)(CFStringRef, CFDictionaryRef);
+  static const auto preflight = [] {
+    void *tcc = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_LAZY);
+    return tcc == nullptr ? nullptr : reinterpret_cast<Preflight>(dlsym(tcc, "TCCAccessPreflight"));
+  }();
+  // 0 allowed, 1 denied, 2 not asked yet
+  return preflight != nullptr && preflight(CFSTR("kTCCServiceAudioCapture"), nullptr) == 1;
+}
+
+QString captureError(OSStatus status)
+{
+  return QStringLiteral("cannot capture the sound playing on this Mac (error %1)").arg(status);
 }
 
 //! Hopflow's own audio process, or kAudioObjectUnknown if it has none
@@ -99,8 +119,8 @@ public:
     if (sampleRate == kAudioSampleRate) {
       return true;
     }
-    const auto in = stereoFloat(sampleRate);
-    const auto out = stereoFloat(kAudioSampleRate);
+    const auto in = stereoPcmFormat(true, sampleRate);
+    const auto out = stereoPcmFormat();
     return AudioConverterNew(&in, &out, &m_converter) == noErr;
   }
 
@@ -177,6 +197,8 @@ struct MacAudioTap::Impl
 
   std::mutex mutex;
   bool running = false;
+  //! Held while the tap, its private device and the IOProc are made or taken down
+  std::mutex lifecycle;
   MacSoundEncoder encoder;
   const bool muteLocal;
   IAudioSource::PacketReady onPacket;
@@ -188,6 +210,9 @@ struct MacAudioTap::Impl
   AudioStreamBasicDescription format{};
   RateConverter rate;
   std::vector<float> interleaved;
+  std::unique_ptr<MacDefaultDeviceWatch> watch;
+  //! Frames of pure digital silence so far, or -1 once sound was heard or the hint was given
+  int64_t silentFrames = 0;
 
   //! Create the tap and the private device it is read through; returns why it failed, or empty
   API_AVAILABLE(macos(14.2)) QString createTap()
@@ -200,7 +225,7 @@ struct MacAudioTap::Impl
     description.muteBehavior = muteLocal ? CATapMutedWhenTapped : CATapUnmuted;
     if (const auto status = AudioHardwareCreateProcessTap(description, &tap); status != noErr) {
       tap = kAudioObjectUnknown;
-      return QStringLiteral("cannot capture the sound playing on this Mac (error %1)").arg(status);
+      return captureError(status);
     }
 
     const auto formatAddress = globalAddress(kAudioTapPropertyFormat);
@@ -234,9 +259,56 @@ struct MacAudioTap::Impl
     if (const auto status = AudioHardwareCreateAggregateDevice((__bridge CFDictionaryRef)device, &aggregate);
         status != noErr) {
       aggregate = kAudioObjectUnknown;
-      return QStringLiteral("cannot capture the sound playing on this Mac (error %1)").arg(status);
+      return captureError(status);
     }
     return {};
+  }
+
+  //! Read the tap on the queue; returns why it failed, or empty
+  static QString startIo(const std::shared_ptr<Impl> &impl)
+  {
+    // the block keeps impl alive until destroyTap() destroys the IOProc
+    const auto created = AudioDeviceCreateIOProcIDWithBlock(
+        &impl->ioProc, impl->aggregate, impl->queue,
+        ^(const AudioTimeStamp *, const AudioBufferList *input, const AudioTimeStamp *, AudioBufferList *,
+          const AudioTimeStamp *) {
+          impl->captured(input);
+        }
+    );
+    if (created != noErr) {
+      impl->ioProc = nullptr;
+      return captureError(created);
+    }
+    if (const auto started = AudioDeviceStart(impl->aggregate, impl->ioProc); started != noErr) {
+      return captureError(started);
+    }
+    return {};
+  }
+
+  //! Tap again through the new default output; runs on the watch's queue
+  /*!
+  The global tap hears every process wherever it plays, but the private
+  device it is read through is clocked by the output it was made with,
+  which may have just been unplugged.
+  */
+  API_AVAILABLE(macos(14.2)) static void retap(const std::shared_ptr<Impl> &impl)
+  {
+    std::scoped_lock lock(impl->lifecycle);
+    {
+      std::scoped_lock runningLock(impl->mutex);
+      if (!impl->running) {
+        return;
+      }
+    }
+    impl->destroyTap();
+    auto error = impl->createTap();
+    if (error.isEmpty()) {
+      error = startIo(impl);
+    }
+    if (!error.isEmpty()) {
+      impl->destroyTap();
+      impl->fail(error);
+    }
   }
 
   void destroyTap()
@@ -267,6 +339,23 @@ struct MacAudioTap::Impl
     }
   }
 
+  //! A denied tap delivers zeros, as does a Mac playing nothing, so this only hints, once; runs on the queue
+  void noticeSilence(const std::vector<float> &samples)
+  {
+    if (silentFrames < 0) {
+      return;
+    }
+    if (std::any_of(samples.begin(), samples.end(), [](float sample) { return sample != 0.0f; })) {
+      silentFrames = -1;
+      return;
+    }
+    silentFrames += int64_t(samples.size() / kAudioChannels);
+    if (silentFrames >= kSilentFramesBeforeHint) {
+      silentFrames = -1;
+      qInfo().noquote() << "no sound captured for 10 seconds; if this Mac is playing something," << kAllowAudioCapture;
+    }
+  }
+
   //! Runs on the queue
   void captured(const AudioBufferList *input)
   {
@@ -276,24 +365,12 @@ struct MacAudioTap::Impl
 
     // a tap delivers floats, one buffer per channel or interleaved; the encoder wants stereo interleaved
     const bool planar = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
-    const UInt32 channels = format.mChannelsPerFrame;
     const UInt32 frames =
         input->mBuffers[0].mDataByteSize / UInt32(sizeof(float) * (planar ? 1 : input->mBuffers[0].mNumberChannels));
-    interleaved.assign(size_t(frames) * kAudioChannels, 0.0f);
-    for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
-      const UInt32 source = std::min(channel, channels - 1);
-      const auto &buffer = input->mBuffers[planar ? std::min(source, input->mNumberBuffers - 1) : 0];
-      const auto *data = static_cast<const float *>(buffer.mData);
-      if (data == nullptr) {
-        continue;
-      }
-      for (UInt32 frame = 0; frame < frames; ++frame) {
-        interleaved[size_t(frame) * kAudioChannels + channel] =
-            planar ? data[frame] : data[size_t(frame) * buffer.mNumberChannels + source];
-      }
-    }
+    interleaveStereo(*input, format, frames, interleaved);
 
     const auto samples = rate.convert(std::move(interleaved));
+    noticeSilence(samples);
     const auto packets = encoder.encode(samples.data(), UInt32(samples.size() / kAudioChannels));
     std::scoped_lock lock(mutex);
     if (running) {
@@ -330,37 +407,36 @@ void MacAudioTap::start(ConfigReady onConfig, PacketReady onPacket, Failed onFai
       onFailed(QStringLiteral("cannot start the sound encoder"));
       return;
     }
+    if (audioCaptureDenied()) {
+      onFailed(QStringLiteral("Hopflow may not record the sound playing on this Mac: %1").arg(kAllowAudioCapture));
+      return;
+    }
+    std::scoped_lock lock(impl->lifecycle);
+    impl->silentFrames = 0;
     if (const auto error = impl->createTap(); !error.isEmpty()) {
       impl->destroyTap();
       onFailed(error);
       return;
     }
     {
-      std::scoped_lock lock(impl->mutex);
+      std::scoped_lock runningLock(impl->mutex);
       impl->onPacket = std::move(onPacket);
       impl->onFailed = std::move(onFailed);
       impl->running = true;
     }
     onConfig(impl->encoder.config());
 
-    // the block keeps impl alive until stop() destroys the IOProc
-    const auto created = AudioDeviceCreateIOProcIDWithBlock(
-        &impl->ioProc, impl->aggregate, impl->queue,
-        ^(const AudioTimeStamp *, const AudioBufferList *input, const AudioTimeStamp *, AudioBufferList *,
-          const AudioTimeStamp *) {
-          impl->captured(input);
-        }
-    );
-    if (created != noErr) {
-      impl->ioProc = nullptr;
-      impl->fail(QStringLiteral("cannot capture the sound playing on this Mac (error %1)").arg(created));
+    if (const auto error = Impl::startIo(impl); !error.isEmpty()) {
+      impl->fail(error);
       impl->destroyTap();
       return;
     }
-    if (const auto started = AudioDeviceStart(impl->aggregate, impl->ioProc); started != noErr) {
-      impl->fail(QStringLiteral("cannot capture the sound playing on this Mac (error %1)").arg(started));
-      impl->destroyTap();
-    }
+    impl->watch =
+        std::make_unique<MacDefaultDeviceWatch>(MacDefaultDeviceWatch::Direction::Output, [weak = std::weak_ptr(impl)] {
+          if (const auto impl = weak.lock()) {
+            Impl::retap(impl);
+          }
+        });
   } else {
     onFailed(QStringLiteral("muting this Mac while sending its sound needs macOS 14.2 or later"));
   }
@@ -368,11 +444,13 @@ void MacAudioTap::start(ConfigReady onConfig, PacketReady onPacket, Failed onFai
 
 void MacAudioTap::stop()
 {
+  m_impl->watch.reset();
   {
     std::scoped_lock lock(m_impl->mutex);
     m_impl->running = false;
   }
   // AudioDeviceStop waits for a running IOProc, so nothing touches the tap afterwards
+  std::scoped_lock lock(m_impl->lifecycle);
   m_impl->destroyTap();
 }
 

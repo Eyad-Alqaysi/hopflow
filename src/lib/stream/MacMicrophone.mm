@@ -23,19 +23,19 @@ using namespace hopflow::stream;
 
 namespace {
 
-AudioStreamBasicDescription linearFormat(bool floats)
+//! The hidden "Hopflow Mic Feed" device; it is left out of the device list, but its UID still finds it
+AudioObjectID feedDevice()
 {
-  const UInt32 bytes = floats ? sizeof(float) : sizeof(int16_t);
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = kAudioSampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = (floats ? kAudioFormatFlagIsFloat : kAudioFormatFlagIsSignedInteger) | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = bytes * 8;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * bytes;
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
+  CFStringRef uid = (__bridge CFStringRef) @(kMacMicFeedUid);
+  const AudioObjectPropertyAddress address{
+      kAudioHardwarePropertyTranslateUIDToDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
+  };
+  AudioObjectID device = kAudioObjectUnknown;
+  UInt32 size = sizeof(device);
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, sizeof(uid), &uid, &size, &device) != noErr) {
+    return kAudioObjectUnknown;
+  }
+  return device;
 }
 
 QString permissionDenied()
@@ -63,6 +63,7 @@ struct MacMicrophoneSource::Impl
   IAudioSource::PacketReady onPacket;
   IAudioSource::Failed onFailed;
   int64_t capturedFrames = 0;
+  std::unique_ptr<MacDefaultDeviceWatch> watch;
 
   void fail(const QString &message)
   {
@@ -82,7 +83,7 @@ struct MacMicrophoneSource::Impl
     }
 
     // Audio Queue converts whatever the microphone gives, mono included, to 48 kHz stereo
-    const auto format = linearFormat(false);
+    const auto format = stereoPcmFormat(false);
     const UInt32 bufferBytes = kMicPacketFrames * format.mBytesPerFrame;
     if (AudioQueueNewInput(&format, captured, this, nullptr, kCFRunLoopCommonModes, 0, &queue) != noErr) {
       queue = nullptr;
@@ -100,6 +101,23 @@ struct MacMicrophoneSource::Impl
       running = false;
       onFailed(QStringLiteral("this Mac has no microphone to send"));
     }
+  }
+
+  //! Move to the new default microphone; runs on the watch's queue
+  void reopen()
+  {
+    AudioQueueRef old = nullptr;
+    {
+      std::scoped_lock lock(mutex);
+      old = std::exchange(queue, nullptr);
+    }
+    // not capturing: stopped, or still waiting for permission, and open() will find the new device then
+    if (old == nullptr) {
+      return;
+    }
+    AudioQueueStop(old, true);
+    AudioQueueDispose(old, true);
+    open();
   }
 
   //! Runs on the queue's own thread
@@ -145,6 +163,13 @@ void MacMicrophoneSource::start(ConfigReady onConfig, PacketReady onPacket, Fail
   }
   onConfig(microphoneConfig());
 
+  impl->watch =
+      std::make_unique<MacDefaultDeviceWatch>(MacDefaultDeviceWatch::Direction::Input, [weak = std::weak_ptr(impl)] {
+        if (const auto impl = weak.lock()) {
+          impl->reopen();
+        }
+      });
+
   const auto status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
   if (status == AVAuthorizationStatusAuthorized) {
     impl->open();
@@ -164,6 +189,7 @@ void MacMicrophoneSource::start(ConfigReady onConfig, PacketReady onPacket, Fail
 
 void MacMicrophoneSource::stop()
 {
+  m_impl->watch.reset();
   AudioQueueRef queue = nullptr;
   {
     std::scoped_lock lock(m_impl->mutex);
@@ -186,27 +212,8 @@ struct MacVirtualMicSink::Impl
   // a microphone has to keep up with the conversation: start at 20 ms, never more than 80 ms
   PcmJitterBuffer buffer{kAudioChannels, kAudioSampleRate / 50, kAudioSampleRate * 2 / 25};
   MacAacDecoder decoder;
-  AudioQueueRef queue = nullptr;
+  MacPcmOutput output{buffer};
   bool pcm = false;
-
-  static constexpr UInt32 kBufferFrames = kAudioSampleRate / 100; // 10 ms
-  static constexpr int kBufferCount = 3;
-
-  ~Impl()
-  {
-    if (queue != nullptr) {
-      AudioQueueStop(queue, true);
-      AudioQueueDispose(queue, true);
-    }
-  }
-
-  static void refill(void *user, AudioQueueRef queue, AudioQueueBufferRef buffer)
-  {
-    auto *self = static_cast<Impl *>(user);
-    self->buffer.pull(static_cast<float *>(buffer->mAudioData), kBufferFrames);
-    buffer->mAudioDataByteSize = kBufferFrames * kAudioChannels * sizeof(float);
-    AudioQueueEnqueueBuffer(queue, buffer, 0, nullptr);
-  }
 };
 
 MacVirtualMicSink::MacVirtualMicSink() : m_impl(std::make_unique<Impl>())
@@ -217,15 +224,7 @@ MacVirtualMicSink::~MacVirtualMicSink() = default;
 
 bool MacVirtualMicSink::isAvailable()
 {
-  // the feed is hidden from the device list, but its UID still finds it
-  CFStringRef uid = (__bridge CFStringRef) @(kMacMicFeedUid);
-  const AudioObjectPropertyAddress address{
-      kAudioHardwarePropertyTranslateUIDToDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
-  };
-  AudioObjectID device = kAudioObjectUnknown;
-  UInt32 size = sizeof(device);
-  return AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, sizeof(uid), &uid, &size, &device) == noErr &&
-         device != kAudioObjectUnknown;
+  return feedDevice() != kAudioObjectUnknown;
 }
 
 bool MacVirtualMicSink::configure(const AudioConfig &config)
@@ -237,23 +236,9 @@ bool MacVirtualMicSink::configure(const AudioConfig &config)
   if (!m_impl->pcm && !m_impl->decoder.open()) {
     return false;
   }
-
-  const auto format = linearFormat(true);
-  if (AudioQueueNewOutput(&format, Impl::refill, m_impl.get(), nullptr, kCFRunLoopCommonModes, 0, &m_impl->queue) !=
-      noErr) {
-    m_impl->queue = nullptr;
-    return false;
-  }
-  CFStringRef uid = (__bridge CFStringRef) @(kMacMicFeedUid);
-  if (AudioQueueSetProperty(m_impl->queue, kAudioQueueProperty_CurrentDevice, &uid, sizeof(uid)) != noErr) {
-    return false;
-  }
-  for (int i = 0; i < Impl::kBufferCount; ++i) {
-    AudioQueueBufferRef buffer = nullptr;
-    AudioQueueAllocateBuffer(m_impl->queue, Impl::kBufferFrames * kAudioChannels * sizeof(float), &buffer);
-    Impl::refill(m_impl.get(), m_impl->queue, buffer);
-  }
-  return AudioQueueStart(m_impl->queue, nullptr) == noErr;
+  const auto device = feedDevice();
+  // 5 ms at a time keeps the microphone close to live
+  return device != kAudioObjectUnknown && m_impl->output.start(device, kAudioSampleRate / 200);
 }
 
 void MacVirtualMicSink::play(const EncodedAudio &packet)

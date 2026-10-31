@@ -4,11 +4,12 @@
 #
 # Installs the Hopflow virtual microphone so apps can record "Hopflow Microphone".
 # Usage: install-hopflow-mic.sh [path/to/HopflowMic.driver]
-# Without a path it uses the driver next to this script, as shipped in Hopflow.app/Contents/Resources.
+# Without a path it uses the driver shipped in Hopflow.app/Contents/PlugIns, found from this
+# script's place in Hopflow.app/Contents/Resources.
 
 set -eu
 
-driver="${1:-$(cd "$(dirname "$0")" && pwd)/HopflowMic.driver}"
+driver="${1:-$(cd "$(dirname "$0")/.." && pwd)/PlugIns/HopflowMic.driver}"
 destination="/Library/Audio/Plug-Ins/HAL"
 
 if [ ! -f "$driver/Contents/Info.plist" ]; then
