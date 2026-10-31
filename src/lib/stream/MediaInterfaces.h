@@ -97,6 +97,14 @@ public:
   virtual QString displayId() const = 0;
   virtual void destroy() = 0;
   virtual QString error() const = 0;
+  //! create() can take seconds, so it may run on a worker thread, which may also destroy the display
+  /*!
+  Otherwise use the display only on the main thread.
+  */
+  virtual bool createsSlowly() const
+  {
+    return false;
+  }
 };
 
 //! How long received audio may wait before it is played
@@ -120,6 +128,8 @@ sends AAC, for screen sharing.
 std::unique_ptr<IAudioSource>
 createSystemAudioSource(bool muteLocal = false, AudioLatency latency = AudioLatency::Smooth);
 std::unique_ptr<IAudioSource> createMicrophoneSource();
+//! Unmute speakers createSystemAudioSource() muted in a run that crashed; call once at start
+void restoreMutedSpeakers();
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay();
 std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec);
 std::unique_ptr<IAudioSink> createAudioSink(AudioCodec codec, AudioLatency latency = AudioLatency::Smooth);

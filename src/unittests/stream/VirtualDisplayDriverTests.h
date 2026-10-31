@@ -23,5 +23,8 @@ private Q_SLOTS:
   void recognisesHardwareIds();
   void findsDriverSource();
   void ignoresDriverWithoutMonitor();
+  void findsDriverSourceByPath();
+  void keepsShownDriverSourceByPath();
+  void ignoresPathsWithoutDriver();
   void placesBesideDesktop();
 };

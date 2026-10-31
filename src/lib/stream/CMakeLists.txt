@@ -10,6 +10,8 @@ add_library(stream STATIC
   MediaInterfaces.h
   Microphone.cpp
   Microphone.h
+  MutedSpeakers.cpp
+  MutedSpeakers.h
   RateController.cpp
   RateController.h
   StreamConnection.cpp
@@ -61,7 +63,7 @@ endif()
 
 if(WIN32)
   target_sources(stream PRIVATE
-    WinAudio.cpp WinAudio.h WinMedia.cpp WinMedia.h WinMicrophone.cpp WinMicrophone.h WinVideo.cpp WinVideo.h
+    WinAudio.cpp WinAudio.h WinAudioDevice.cpp WinAudioDevice.h WinMedia.cpp WinMedia.h WinMicrophone.cpp WinMicrophone.h WinVideo.cpp WinVideo.h
     WinVirtualDisplay.cpp WinVirtualDisplay.h
   )
   target_link_libraries(stream PRIVATE

@@ -86,6 +86,31 @@ struct DisplaySource
 //! The driver's source with a monitor, preferring one that is not on the desktop yet
 std::optional<qsizetype> findDriverSource(const QList<DisplaySource> &sources);
 
+//! A route QueryDisplayConfig(QDC_ALL_PATHS) offers from a display source to a monitor
+struct DisplayPath
+{
+  //! GDI name of the source, \\.\DISPLAYn
+  QString sourceName;
+  //! Device path of the monitor
+  QString monitorPath;
+  //! The route is in use on the desktop
+  bool active = false;
+  //! The monitor is connected and could be shown
+  bool targetAvailable = false;
+};
+
+//! The source to show the driver's monitor on, for when no source in \p sources lists that monitor
+/*!
+Windows offers a route from every source of an adapter to each of its
+monitors. Like findDriverSource() this prefers a monitor not on the desktop
+yet, taking a source no route in use has; a monitor already shown keeps its
+source.
+The source comes from \p sources when it is listed there, with just its name
+otherwise.
+*/
+std::optional<DisplaySource>
+findDriverSourceByPath(const QList<DisplaySource> &sources, const QList<DisplayPath> &paths);
+
 //! Where a display goes to sit right of the desktop, level with the primary display's top
 QPoint besideDesktop(const QList<DisplaySource> &sources, const QString &deviceName);
 

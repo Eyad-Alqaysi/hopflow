@@ -14,6 +14,7 @@
 #include <QAction>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QThread>
 
 #include <algorithm>
 
@@ -134,7 +135,7 @@ void ExtendDisplayController::stopExtending()
 
 void ExtendDisplayController::onDisplayInfo(const DisplayInfo &info)
 {
-  if (!m_display || !m_display->displayId().isEmpty()) {
+  if (!m_display || m_creating || !m_display->displayId().isEmpty()) {
     qWarning() << "ignoring a second description of the viewer's monitor";
     return;
   }
@@ -142,7 +143,40 @@ void ExtendDisplayController::onDisplayInfo(const DisplayInfo &info)
   qInfo() << "viewer monitor:" << info.width << "x" << info.height << "at" << info.refreshHz << "Hz,"
           << info.scalePercent << "%";
 
-  if (!m_display->create(info)) {
+  if (m_display->createsSlowly()) {
+    createInBackground(info);
+    return;
+  }
+  onDisplayCreated(m_display->create(info));
+}
+
+void ExtendDisplayController::createInBackground(const DisplayInfo &info)
+{
+  m_creating = true;
+  updateActions();
+  Q_EMIT notify(tr("Adding the extended display, which can take a few seconds…"));
+
+  auto created = std::make_shared<bool>(false);
+  auto *worker = QThread::create([display = m_display, info, created]() mutable {
+    *created = display->create(info);
+    // when the session ended meanwhile this is the last owner, so the display goes away here
+    display.reset();
+  });
+  const std::weak_ptr<IVirtualDisplay> display = m_display;
+  connect(worker, &QThread::finished, this, [this, display, created] {
+    m_creating = false;
+    if (const auto current = display.lock(); current && current == m_display) {
+      onDisplayCreated(*created);
+    }
+    updateActions();
+  });
+  connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+  worker->start();
+}
+
+void ExtendDisplayController::onDisplayCreated(bool created)
+{
+  if (!created) {
     const auto reason = m_display->error();
     m_sender->stop();
     showError(tr("The extended display could not be created: %1").arg(reason));
@@ -175,7 +209,7 @@ void ExtendDisplayController::onStopped(const QString &reason)
     return;
   }
 
-  const bool hadDisplay = m_display && !m_display->displayId().isEmpty();
+  const bool hadDisplay = m_display && !m_creating && !m_display->displayId().isEmpty();
   endSession();
   if (reason == tr("stopped")) {
     if (hadDisplay) {
@@ -208,6 +242,6 @@ void ExtendDisplayController::showError(const QString &message)
 void ExtendDisplayController::updateActions()
 {
   const bool extending = m_sender->isActive();
-  m_extendAction->setEnabled(!extending);
+  m_extendAction->setEnabled(!extending && !m_creating);
   m_stopAction->setEnabled(extending);
 }

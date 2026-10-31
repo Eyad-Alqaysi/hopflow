@@ -74,6 +74,8 @@ private:
   void tryNextHost();
   void stopExtending();
   void onDisplayInfo(const hopflow::stream::DisplayInfo &info);
+  void createInBackground(const hopflow::stream::DisplayInfo &info);
+  void onDisplayCreated(bool created);
   void onStopped(const QString &reason);
   void endSession();
   void showError(const QString &message);
@@ -85,10 +87,13 @@ private:
   std::function<void()> m_resumeSharing;
   QAction *m_extendAction;
   QAction *m_stopAction;
-  // declared before the sender, so capture has stopped by the time the display goes
-  std::unique_ptr<hopflow::stream::IVirtualDisplay> m_display;
+  // declared before the sender, so capture has stopped by the time the display goes; shared with
+  // a worker creating it, which then destroys it if the session ended meanwhile
+  std::shared_ptr<hopflow::stream::IVirtualDisplay> m_display;
   std::unique_ptr<hopflow::stream::StreamSender> m_sender;
   QStringList m_hostsToTry;
   bool m_streaming = false;
+  //! A worker is creating a display, which only it may touch until it finishes
+  bool m_creating = false;
   bool m_pausedSharing = false;
 };

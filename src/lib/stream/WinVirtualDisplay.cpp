@@ -243,6 +243,64 @@ QList<vdd::DisplaySource> displaySources()
   return sources;
 }
 
+QList<vdd::DisplayPath> displayPaths()
+{
+  std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+  std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+  UINT32 pathCount = 0;
+  UINT32 modeCount = 0;
+  LONG result = ERROR_INSUFFICIENT_BUFFER;
+  // a monitor arriving between the two calls makes the buffers too small
+  while (result == ERROR_INSUFFICIENT_BUFFER) {
+    if (GetDisplayConfigBufferSizes(QDC_ALL_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) {
+      return {};
+    }
+    paths.resize(pathCount);
+    modes.resize(modeCount);
+    result = QueryDisplayConfig(QDC_ALL_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr);
+  }
+  // polled while the monitor comes up, so a failure only means no routes this time
+  if (result != ERROR_SUCCESS) {
+    return {};
+  }
+  paths.resize(pathCount);
+
+  QList<vdd::DisplayPath> found;
+  for (const auto &path : paths) {
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+    source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+    source.header.size = sizeof(source);
+    source.header.adapterId = path.sourceInfo.adapterId;
+    source.header.id = path.sourceInfo.id;
+    DISPLAYCONFIG_TARGET_DEVICE_NAME target{};
+    target.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+    target.header.size = sizeof(target);
+    target.header.adapterId = path.targetInfo.adapterId;
+    target.header.id = path.targetInfo.id;
+    if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS ||
+        DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS) {
+      continue;
+    }
+
+    vdd::DisplayPath route;
+    route.sourceName = QString::fromWCharArray(source.viewGdiDeviceName);
+    route.monitorPath = QString::fromWCharArray(target.monitorDevicePath);
+    route.active = (path.flags & DISPLAYCONFIG_PATH_ACTIVE) != 0;
+    route.targetAvailable = path.targetInfo.targetAvailable != FALSE;
+    found.append(route);
+  }
+  return found;
+}
+
+//! The driver's source, by the monitor EnumDisplayDevicesW lists on it, or else by the routes Windows offers
+std::optional<vdd::DisplaySource> driverSource(const QList<vdd::DisplaySource> &sources)
+{
+  if (const auto index = vdd::findDriverSource(sources)) {
+    return sources[*index];
+  }
+  return vdd::findDriverSourceByPath(sources, displayPaths());
+}
+
 //! Put \p deviceName at \p bounds, or take it off the desktop when \p bounds is empty
 LONG applyMode(const QString &deviceName, const QRect &bounds, int refreshHz)
 {
@@ -313,31 +371,28 @@ bool WinVirtualDisplay::create(const DisplayInfo &info)
     return fail(error);
   }
 
+  // just after a restart the old monitor can still be listed, and Windows refuses a mode for it,
+  // so keep looking until a monitor takes the mode
   std::optional<vdd::DisplaySource> source;
-  const bool connected = waitFor(kMonitorTimeout, [&source] {
+  LONG result = DISP_CHANGE_SUCCESSFUL;
+  const bool shown = waitFor(kMonitorTimeout, [&source, &result, &mode] {
     const auto sources = displaySources();
-    if (const auto index = vdd::findDriverSource(sources)) {
-      source = sources[*index];
+    source = driverSource(sources);
+    if (!source) {
+      return false;
     }
-    return source.has_value();
+    const auto position = source->primary ? source->bounds.topLeft() : vdd::besideDesktop(sources, source->deviceName);
+    result = applyMode(source->deviceName, QRect(position, QSize(mode.width, mode.height)), mode.refreshHz);
+    return result == DISP_CHANGE_SUCCESSFUL;
   });
-  if (!connected) {
+  if (!source) {
     destroy();
     return fail(QStringLiteral(
         "the Virtual Display Driver did not connect a monitor; "
         "check that its settings ask for at least one"
     ));
   }
-
-  m_displayId = source->deviceName;
-  m_wasAttached = source->attached;
-  m_previousBounds = source->bounds;
-  m_previousRefreshHz = source->refreshHz;
-
-  const auto position =
-      source->primary ? source->bounds.topLeft() : vdd::besideDesktop(displaySources(), source->deviceName);
-  if (const LONG result = applyMode(m_displayId, QRect(position, QSize(mode.width, mode.height)), mode.refreshHz);
-      result != DISP_CHANGE_SUCCESSFUL) {
+  if (!shown) {
     destroy();
     return fail(QStringLiteral("Windows would not show the virtual display at %1x%2, %3 Hz (error %4)")
                     .arg(mode.width)
@@ -345,6 +400,11 @@ bool WinVirtualDisplay::create(const DisplayInfo &info)
                     .arg(mode.refreshHz)
                     .arg(result));
   }
+
+  m_displayId = source->deviceName;
+  m_wasAttached = source->attached;
+  m_previousBounds = source->bounds;
+  m_previousRefreshHz = source->refreshHz;
 
   if (!waitFor(kOutputTimeout, [this] { return isOnDesktop(m_displayId); })) {
     destroy();

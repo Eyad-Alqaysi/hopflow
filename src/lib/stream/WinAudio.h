@@ -26,6 +26,9 @@ public:
   void start(ConfigReady onConfig, PacketReady onPacket, Failed onFailed) override;
   void stop() override;
 
+  //! Unmute speakers that a run which crashed while muting them left muted
+  static void restoreMutedSpeakers();
+
   struct Impl;
 
 private:

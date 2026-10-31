@@ -53,6 +53,14 @@ std::unique_ptr<IAudioSource> createSystemAudioSource([[maybe_unused]] bool mute
   return nullptr;
 }
 
+void restoreMutedSpeakers()
+{
+  // a Mac's process tap stops muting when its process ends, so only Windows has anything to undo
+#if defined(_WIN32)
+  WinSystemAudioSource::restoreMutedSpeakers();
+#endif
+}
+
 std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
 {
   if (codec == VideoCodec::Jpeg) {
