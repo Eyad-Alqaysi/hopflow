@@ -15,6 +15,8 @@ endif()
 
 add_library(${target} STATIC
   ${platform_sources}
+  AudioRouteController.cpp
+  AudioRouteController.h
   ComputerSetupModel.cpp
   ScreenShareController.cpp
   ScreenShareController.h

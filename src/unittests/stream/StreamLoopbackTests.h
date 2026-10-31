@@ -20,6 +20,7 @@ private Q_SLOTS:
   void unknownSenderNeedsApproval();
   void unknownViewerNeedsApproval();
   void stoppingEndsBothSides();
+  void soundSessionSendsOnlyAudio();
 
 private:
   QTemporaryDir m_dir;

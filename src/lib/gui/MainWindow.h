@@ -29,6 +29,7 @@ class QAction;
 class QMenu;
 class QLocalServer;
 
+class AudioRouteController;
 class DeskflowApplication;
 class LogDock;
 class DragProbeWindow;
@@ -189,6 +190,8 @@ private:
   LogDock *m_logDock;
   DragProbeWindow *m_dragProbe;
   ScreenShareController *m_screenShare = nullptr;
+  AudioRouteController *m_soundRoute = nullptr;
+  AudioRouteController *m_micRoute = nullptr;
   QStringList m_connectedClients;
   StatusBar *m_statusBar = nullptr;
 

@@ -8,8 +8,6 @@
 
 #include "stream/MacAudio.h"
 
-#include "stream/AudioBuffer.h"
-
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreMedia/CoreMedia.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
@@ -233,6 +231,29 @@ std::vector<float> MacAacDecoder::decode(const QByteArray &packet)
   return samples;
 }
 
+//
+// MacSoundEncoder
+//
+
+MacSoundEncoder::MacSoundEncoder(AudioCodec codec) : m_codec(codec)
+{
+}
+
+bool MacSoundEncoder::open()
+{
+  return m_codec == AudioCodec::Pcm16 || m_aac.open();
+}
+
+AudioConfig MacSoundEncoder::config() const
+{
+  return audioConfigFor(m_codec);
+}
+
+std::vector<EncodedAudio> MacSoundEncoder::encode(const float *samples, uint32_t frames)
+{
+  return m_codec == AudioCodec::Pcm16 ? m_pcm.pack(samples, frames) : m_aac.encode(samples, frames);
+}
+
 } // namespace hopflow::stream
 
 //
@@ -243,9 +264,13 @@ namespace hopflow::stream {
 
 struct MacSystemAudioSource::Impl
 {
+  explicit Impl(AudioCodec codec) : encoder(codec)
+  {
+  }
+
   std::mutex mutex;
   bool running = false;
-  MacAacEncoder encoder;
+  MacSoundEncoder encoder;
   IAudioSource::PacketReady onPacket;
   IAudioSource::Failed onFailed;
   dispatch_queue_t queue = dispatch_queue_create("io.github.eyad_alqaysi.hopflow.audio", DISPATCH_QUEUE_SERIAL);
@@ -332,7 +357,7 @@ API_AVAILABLE(macos(13.0))
 
 namespace hopflow::stream {
 
-MacSystemAudioSource::MacSystemAudioSource() : m_impl(std::make_shared<Impl>())
+MacSystemAudioSource::MacSystemAudioSource(AudioCodec codec) : m_impl(std::make_shared<Impl>(codec))
 {
 }
 
@@ -363,11 +388,7 @@ void MacSystemAudioSource::start(ConfigReady onConfig, PacketReady onPacket, Fai
       impl->onFailed = std::move(onFailed);
       impl->running = true;
     }
-    onConfig(
-        AudioConfig{
-            AudioCodec::Aac, kAudioSampleRate, kAudioChannels, aacAudioSpecificConfig(kAudioSampleRate, kAudioChannels)
-        }
-    );
+    onConfig(impl->encoder.config());
 
     [SCShareableContent
         getShareableContentExcludingDesktopWindows:NO
@@ -451,14 +472,20 @@ void MacSystemAudioSource::stop()
 
 struct MacAudioSink::Impl
 {
-  // start once 50 ms are buffered, never let more than 250 ms build up
-  PcmJitterBuffer buffer{kAudioChannels, kAudioSampleRate / 20, kAudioSampleRate / 4};
+  explicit Impl(AudioLatency latency)
+      : buffer(kAudioChannels, jitterDepth(latency)),
+        // low latency queues 4 buffers of 5 ms, which still covers one 512 frame device cycle
+        bufferFrames(latency == AudioLatency::Low ? kAudioSampleRate / 200 : kAudioSampleRate / 100),
+        bufferCount(latency == AudioLatency::Low ? 4 : 3)
+  {
+  }
+
+  PcmJitterBuffer buffer;
+  const UInt32 bufferFrames;
+  const int bufferCount;
   MacAacDecoder decoder;
   AudioQueueRef queue = nullptr;
   bool pcm = false;
-
-  static constexpr UInt32 kBufferFrames = kAudioSampleRate / 100; // 10 ms
-  static constexpr int kBufferCount = 3;
 
   ~Impl()
   {
@@ -471,13 +498,13 @@ struct MacAudioSink::Impl
   static void refill(void *user, AudioQueueRef queue, AudioQueueBufferRef buffer)
   {
     auto *self = static_cast<Impl *>(user);
-    self->buffer.pull(static_cast<float *>(buffer->mAudioData), kBufferFrames);
-    buffer->mAudioDataByteSize = kBufferFrames * kAudioChannels * sizeof(float);
+    self->buffer.pull(static_cast<float *>(buffer->mAudioData), self->bufferFrames);
+    buffer->mAudioDataByteSize = self->bufferFrames * kAudioChannels * sizeof(float);
     AudioQueueEnqueueBuffer(queue, buffer, 0, nullptr);
   }
 };
 
-MacAudioSink::MacAudioSink() : m_impl(std::make_unique<Impl>())
+MacAudioSink::MacAudioSink(AudioLatency latency) : m_impl(std::make_unique<Impl>(latency))
 {
 }
 
@@ -498,9 +525,9 @@ bool MacAudioSink::configure(const AudioConfig &config)
       noErr) {
     return false;
   }
-  for (int i = 0; i < Impl::kBufferCount; ++i) {
+  for (int i = 0; i < m_impl->bufferCount; ++i) {
     AudioQueueBufferRef buffer = nullptr;
-    AudioQueueAllocateBuffer(m_impl->queue, Impl::kBufferFrames * kAudioChannels * sizeof(float), &buffer);
+    AudioQueueAllocateBuffer(m_impl->queue, m_impl->bufferFrames * kAudioChannels * sizeof(float), &buffer);
     Impl::refill(m_impl.get(), m_impl->queue, buffer);
   }
   return AudioQueueStart(m_impl->queue, nullptr) == noErr;

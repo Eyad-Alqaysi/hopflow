@@ -113,7 +113,12 @@ enum class AudioLatency : uint8_t
 //! Capture \p displayId, or the main display when empty
 std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId = {});
 //! What this computer plays; with \p muteLocal its own speakers go quiet while captured
-std::unique_ptr<IAudioSource> createSystemAudioSource(bool muteLocal = false);
+/*!
+Low \p latency sends uncompressed 10 ms packets for sound routing; Smooth
+sends AAC, for screen sharing.
+*/
+std::unique_ptr<IAudioSource>
+createSystemAudioSource(bool muteLocal = false, AudioLatency latency = AudioLatency::Smooth);
 std::unique_ptr<IAudioSource> createMicrophoneSource();
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay();
 std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec);

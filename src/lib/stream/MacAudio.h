@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "stream/AudioBuffer.h"
 #include "stream/MediaInterfaces.h"
 
 #include <memory>
@@ -51,11 +52,27 @@ private:
   std::unique_ptr<Impl> m_impl;
 };
 
+//! Encodes captured 48 kHz stereo floats as \p codec: AAC, or Pcm16 for low latency
+class MacSoundEncoder
+{
+public:
+  explicit MacSoundEncoder(AudioCodec codec);
+
+  bool open();
+  AudioConfig config() const;
+  std::vector<EncodedAudio> encode(const float *samples, uint32_t frames);
+
+private:
+  const AudioCodec m_codec;
+  MacAacEncoder m_aac;
+  Pcm16Packetizer m_pcm;
+};
+
 //! Captures what the Mac is playing with ScreenCaptureKit (macOS 13 and later)
 class MacSystemAudioSource : public IAudioSource
 {
 public:
-  MacSystemAudioSource();
+  explicit MacSystemAudioSource(AudioCodec codec = AudioCodec::Aac);
   ~MacSystemAudioSource() override;
 
   void start(ConfigReady onConfig, PacketReady onPacket, Failed onFailed) override;
@@ -73,7 +90,7 @@ private:
 class MacAudioSink : public IAudioSink
 {
 public:
-  MacAudioSink();
+  explicit MacAudioSink(AudioLatency latency = AudioLatency::Smooth);
   ~MacAudioSink() override;
 
   bool configure(const AudioConfig &config) override;

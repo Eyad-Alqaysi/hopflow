@@ -87,4 +87,53 @@ void AudioBufferTests::dropsOldestWhenTooFull()
   QCOMPARE(out[0], 300.0f);
 }
 
+void AudioBufferTests::lowLatencyStaysWithinBounds()
+{
+  const auto depth = jitterDepth(AudioLatency::Low);
+  QCOMPARE(depth.startFrames, kAudioSampleRate / 50);   // 20 ms
+  QCOMPARE(depth.maxFrames, kAudioSampleRate * 2 / 25); // 80 ms
+  QVERIFY(jitterDepth(AudioLatency::Smooth).startFrames > depth.startFrames);
+
+  PcmJitterBuffer buffer(kAudioChannels, depth);
+  std::vector<float> out(size_t(kPcmFramesPerPacket) * kAudioChannels);
+  const std::vector<float> packet(size_t(kPcmFramesPerPacket) * kAudioChannels, 0.5f);
+
+  // one 10 ms packet is not enough to start, two are
+  buffer.push(packet.data(), kPcmFramesPerPacket);
+  QCOMPARE(buffer.pull(out.data(), kPcmFramesPerPacket), 0u);
+  buffer.push(packet.data(), kPcmFramesPerPacket);
+  QCOMPARE(buffer.pull(out.data(), kPcmFramesPerPacket), kPcmFramesPerPacket);
+
+  // a burst after a stall never holds more than 80 ms
+  for (int i = 0; i < 50; ++i) {
+    buffer.push(packet.data(), kPcmFramesPerPacket);
+    QVERIFY(buffer.bufferedFrames() <= depth.maxFrames);
+  }
+}
+
+void AudioBufferTests::pcm16PacketsAreTenMilliseconds()
+{
+  Pcm16Packetizer packetizer;
+  const auto some = ramp(0, 300);
+  QVERIFY(packetizer.pack(some.data(), 300).empty());
+
+  // 300 + 700 frames make two whole packets, 40 frames wait for the next
+  const auto more = ramp(0, 700);
+  const auto packets = packetizer.pack(more.data(), 700);
+  QCOMPARE(packets.size(), size_t(2));
+  QCOMPARE(packets[0].data.size(), qsizetype(kPcmFramesPerPacket * kAudioChannels * sizeof(int16_t)));
+  QCOMPARE(packets[0].timestampUs, int64_t(0));
+  QCOMPARE(packets[1].timestampUs, int64_t(10'000));
+
+  const std::vector<float> loud = {2.0f, -2.0f};
+  std::vector<float> rest(size_t(kPcmFramesPerPacket - 40 - 1) * kAudioChannels, 0.0f);
+  rest.insert(rest.end(), loud.begin(), loud.end());
+  const auto last = packetizer.pack(rest.data(), uint32_t(rest.size() / kAudioChannels));
+  QCOMPARE(last.size(), size_t(1));
+  const auto *samples = reinterpret_cast<const int16_t *>(last[0].data.constData());
+  // out of range samples are clipped, not wrapped
+  QCOMPARE(samples[kPcmFramesPerPacket * kAudioChannels - 2], int16_t(32767));
+  QCOMPARE(samples[kPcmFramesPerPacket * kAudioChannels - 1], int16_t(-32767));
+}
+
 QTEST_MAIN(AudioBufferTests)

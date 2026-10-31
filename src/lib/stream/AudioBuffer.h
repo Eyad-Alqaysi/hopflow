@@ -6,11 +6,14 @@
 
 #pragma once
 
+#include "stream/MediaInterfaces.h"
+
 #include <QByteArray>
 
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <vector>
 
 namespace hopflow::stream {
 
@@ -19,9 +22,38 @@ inline constexpr uint32_t kAudioSampleRate = 48000;
 inline constexpr uint32_t kAudioChannels = 2;
 inline constexpr uint32_t kAacFramesPerPacket = 1024;
 inline constexpr uint32_t kAacBitrate = 128000;
+//! 10 ms: short packets keep routed sound close to live
+inline constexpr uint32_t kPcmFramesPerPacket = kAudioSampleRate / 100;
 
 //! AudioSpecificConfig for AAC-LC at \p sampleRate with \p channels
 QByteArray aacAudioSpecificConfig(uint32_t sampleRate, uint32_t channels);
+
+//! The AudioConfig a source sends for \p codec in the end to end format
+AudioConfig audioConfigFor(AudioCodec codec);
+
+//! How much audio a sink holds back, in frames
+struct JitterDepth
+{
+  //! Playback starts once this much has arrived
+  uint32_t startFrames;
+  //! More than this and the oldest audio is dropped
+  uint32_t maxFrames;
+};
+
+//! 50 ms and 250 ms for Smooth; 20 ms and 80 ms for Low
+JitterDepth jitterDepth(AudioLatency latency);
+
+//! Turns interleaved float samples into Pcm16 packets of kPcmFramesPerPacket frames
+class Pcm16Packetizer
+{
+public:
+  //! Add samples; returns the packets that are now complete
+  std::vector<EncodedAudio> pack(const float *samples, uint32_t frames);
+
+private:
+  std::vector<int16_t> m_pending;
+  int64_t m_packets = 0;
+};
 
 //! Holds decoded audio between the network and the sound card
 /*!
@@ -34,6 +66,7 @@ class PcmJitterBuffer
 {
 public:
   PcmJitterBuffer(uint32_t channels, uint32_t startFrames, uint32_t maxFrames);
+  PcmJitterBuffer(uint32_t channels, JitterDepth depth);
 
   void push(const float *samples, uint32_t frames);
 
