@@ -81,6 +81,33 @@ QByteArray sampleBytes(IMFSample *sample)
   return bytes;
 }
 
+bool findOutput(const QString &deviceName, ComPtr<IDXGIAdapter1> &adapter, ComPtr<IDXGIOutput> &output)
+{
+  // a factory only knows the displays there were when it was made, so make a new one
+  ComPtr<IDXGIFactory1> factory;
+  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
+    return false;
+  }
+  for (UINT a = 0; factory->EnumAdapters1(a, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++a) {
+    for (UINT o = 0; adapter->EnumOutputs(o, output.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++o) {
+      DXGI_OUTPUT_DESC desc{};
+      if (FAILED(output->GetDesc(&desc)) || !desc.AttachedToDesktop) {
+        continue;
+      }
+      // the primary display is the one at the desktop origin
+      const bool wanted = deviceName.isEmpty()
+                              ? desc.DesktopCoordinates.left == 0 && desc.DesktopCoordinates.top == 0
+                              : deviceName.compare(QString::fromWCharArray(desc.DeviceName), Qt::CaseInsensitive) == 0;
+      if (wanted) {
+        return true;
+      }
+    }
+  }
+  adapter.Reset();
+  output.Reset();
+  return false;
+}
+
 MediaFoundationScope::MediaFoundationScope()
 {
   m_com = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));

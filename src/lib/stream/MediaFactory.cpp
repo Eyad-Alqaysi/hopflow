@@ -19,16 +19,18 @@ namespace hopflow::stream {
 
 std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId)
 {
+#if !defined(_WIN32)
   if (!displayId.isEmpty()) {
     // capture of a chosen display is added per platform with the virtual display
     return nullptr;
   }
+#endif
 #if defined(__APPLE__)
   if (MacScreenSource::isAvailable()) {
     return std::make_unique<MacScreenSource>();
   }
 #elif defined(_WIN32)
-  return std::make_unique<WinScreenSource>();
+  return std::make_unique<WinScreenSource>(displayId);
 #endif
   return nullptr;
 }
