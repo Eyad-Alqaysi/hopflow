@@ -148,6 +148,46 @@ std::optional<qsizetype> findDriverSource(const QList<DisplaySource> &sources)
   return found;
 }
 
+std::optional<DisplaySource>
+findDriverSourceByPath(const QList<DisplaySource> &sources, const QList<DisplayPath> &paths)
+{
+  const auto isDriver = [](const DisplayPath &path) {
+    return path.targetAvailable && path.monitorPath.contains(QLatin1String("MTT1337"), Qt::CaseInsensitive);
+  };
+  QStringList busy;
+  for (const auto &path : paths) {
+    if (path.active) {
+      busy.append(path.sourceName.toUpper());
+    }
+  }
+
+  std::optional<QString> name;
+  for (const auto &path : paths) {
+    if (!isDriver(path)) {
+      continue;
+    }
+    if (!path.active && !busy.contains(path.sourceName.toUpper())) {
+      name = path.sourceName;
+      break;
+    }
+    if (path.active && !name) {
+      name = path.sourceName;
+    }
+  }
+  if (!name) {
+    return std::nullopt;
+  }
+
+  for (const auto &source : sources) {
+    if (source.deviceName.compare(*name, Qt::CaseInsensitive) == 0) {
+      return source;
+    }
+  }
+  DisplaySource source;
+  source.deviceName = *name;
+  return source;
+}
+
 QPoint besideDesktop(const QList<DisplaySource> &sources, const QString &deviceName)
 {
   int right = 0;

@@ -66,6 +66,16 @@ DisplaySource source(const QString &name, const QString &adapter, const QString 
   return s;
 }
 
+DisplayPath path(const QString &source, const QString &monitor, bool active, bool available = true)
+{
+  DisplayPath p;
+  p.sourceName = source;
+  p.monitorPath = monitor;
+  p.active = active;
+  p.targetAvailable = available;
+  return p;
+}
+
 } // namespace
 
 void VirtualDisplayDriverTests::readsShippedSettings()
@@ -179,6 +189,55 @@ void VirtualDisplayDriverTests::ignoresDriverWithoutMonitor()
       source(QStringLiteral("\\\\.\\DISPLAY2"), QStringLiteral("Root\\MttVDD"), QString(), false),
   };
   QCOMPARE(findDriverSource(sources), std::nullopt);
+}
+
+void VirtualDisplayDriverTests::findsDriverSourceByPath()
+{
+  auto shown = source(QStringLiteral("\\\\.\\DISPLAY1"), QStringLiteral("PCI\\VEN_10DE&DEV_2684"), kRealMonitor, true);
+  shown.bounds = QRect(0, 0, 2560, 1440);
+  const QList<DisplaySource> sources{
+      shown,
+      source(QStringLiteral("\\\\.\\DISPLAY2"), QStringLiteral("Root\\MttVDD"), QString(), false),
+      source(QStringLiteral("\\\\.\\DISPLAY3"), QStringLiteral("Root\\MttVDD"), QString(), false),
+  };
+  // the driver's monitor is offered from both of its sources, and DISPLAY2 already shows another monitor
+  const QList<DisplayPath> paths{
+      path(QStringLiteral("\\\\.\\DISPLAY1"), kRealMonitor, true),
+      path(QStringLiteral("\\\\.\\display2"), kRealMonitor, true),
+      path(QStringLiteral("\\\\.\\DISPLAY2"), kVddMonitor, false),
+      path(QStringLiteral("\\\\.\\DISPLAY3"), kVddMonitor, false),
+  };
+  const auto found = findDriverSourceByPath(sources, paths);
+  QVERIFY(found);
+  QCOMPARE(found->deviceName, QStringLiteral("\\\\.\\DISPLAY3"));
+  QCOMPARE(found->adapterId, QStringLiteral("Root\\MttVDD"));
+
+  // a source EnumDisplayDevicesW did not list is still usable by its name
+  const auto unlisted = findDriverSourceByPath({shown}, paths);
+  QVERIFY(unlisted);
+  QCOMPARE(unlisted->deviceName, QStringLiteral("\\\\.\\DISPLAY3"));
+  QVERIFY(!unlisted->attached);
+}
+
+void VirtualDisplayDriverTests::keepsShownDriverSourceByPath()
+{
+  const QList<DisplayPath> paths{
+      path(QStringLiteral("\\\\.\\DISPLAY4"), kVddMonitor, true),
+      path(QStringLiteral("\\\\.\\DISPLAY5"), kVddMonitor, false, false),
+  };
+  const auto found = findDriverSourceByPath({}, paths);
+  QVERIFY(found);
+  QCOMPARE(found->deviceName, QStringLiteral("\\\\.\\DISPLAY4"));
+}
+
+void VirtualDisplayDriverTests::ignoresPathsWithoutDriver()
+{
+  const QList<DisplayPath> paths{
+      path(QStringLiteral("\\\\.\\DISPLAY1"), kRealMonitor, true),
+      path(QStringLiteral("\\\\.\\DISPLAY2"), kRealMonitor, false),
+      path(QStringLiteral("\\\\.\\DISPLAY3"), kVddMonitor, false, false),
+  };
+  QCOMPARE(findDriverSourceByPath({}, paths), std::nullopt);
 }
 
 void VirtualDisplayDriverTests::placesBesideDesktop()
