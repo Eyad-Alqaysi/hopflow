@@ -97,6 +97,14 @@ public:
   virtual QString displayId() const = 0;
   virtual void destroy() = 0;
   virtual QString error() const = 0;
+  //! create() can take seconds, so it may run on a worker thread, which may also destroy the display
+  /*!
+  Otherwise use the display only on the main thread.
+  */
+  virtual bool createsSlowly() const
+  {
+    return false;
+  }
 };
 
 //! How long received audio may wait before it is played

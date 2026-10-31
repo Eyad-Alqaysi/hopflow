@@ -16,8 +16,8 @@ namespace hopflow::stream {
 /*!
 See stream/VirtualDisplayDriver.h for how the driver is controlled. create()
 may restart the driver so it offers the size asked for, then waits for
-Windows to bring the monitor up, so it can block for several seconds.
-Changing the driver's settings, or turning it on, needs administrator rights
+Windows to bring the monitor up, so it can block for several seconds and
+createsSlowly() says so. Changing the driver's settings, or turning it on, needs administrator rights
 the first time a size is used; error() says so when Windows refuses.
 */
 class WinVirtualDisplay : public IVirtualDisplay
@@ -32,6 +32,10 @@ public:
   QString displayId() const override;
   void destroy() override;
   QString error() const override;
+  bool createsSlowly() const override
+  {
+    return true;
+  }
 
 private:
   bool fail(const QString &message);
