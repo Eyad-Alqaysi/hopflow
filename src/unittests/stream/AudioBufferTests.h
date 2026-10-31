@@ -19,4 +19,6 @@ private Q_SLOTS:
   void dropsOldestWhenTooFull();
   void lowLatencyStaysWithinBounds();
   void pcm16PacketsAreTenMilliseconds();
+  void pcm16RoundTrip();
+  void pcm16Clamps();
 };

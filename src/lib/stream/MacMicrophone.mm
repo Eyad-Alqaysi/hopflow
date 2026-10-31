@@ -23,21 +23,6 @@ using namespace hopflow::stream;
 
 namespace {
 
-AudioStreamBasicDescription linearFormat(bool floats)
-{
-  const UInt32 bytes = floats ? sizeof(float) : sizeof(int16_t);
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = kAudioSampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = (floats ? kAudioFormatFlagIsFloat : kAudioFormatFlagIsSignedInteger) | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = bytes * 8;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * bytes;
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
-}
-
 QString permissionDenied()
 {
   return QStringLiteral(
@@ -82,7 +67,7 @@ struct MacMicrophoneSource::Impl
     }
 
     // Audio Queue converts whatever the microphone gives, mono included, to 48 kHz stereo
-    const auto format = linearFormat(false);
+    const auto format = stereoPcmFormat(false);
     const UInt32 bufferBytes = kMicPacketFrames * format.mBytesPerFrame;
     if (AudioQueueNewInput(&format, captured, this, nullptr, kCFRunLoopCommonModes, 0, &queue) != noErr) {
       queue = nullptr;
@@ -238,7 +223,7 @@ bool MacVirtualMicSink::configure(const AudioConfig &config)
     return false;
   }
 
-  const auto format = linearFormat(true);
+  const auto format = stereoPcmFormat();
   if (AudioQueueNewOutput(&format, Impl::refill, m_impl.get(), nullptr, kCFRunLoopCommonModes, 0, &m_impl->queue) !=
       noErr) {
     m_impl->queue = nullptr;

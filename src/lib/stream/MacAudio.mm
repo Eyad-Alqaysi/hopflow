@@ -21,20 +21,6 @@ namespace {
 // returned by input callbacks when they have nothing more to give right now
 constexpr OSStatus kNoMoreInput = 'hfnd';
 
-AudioStreamBasicDescription pcmFormat()
-{
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = kAudioSampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = 32;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * sizeof(float);
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
-}
-
 AudioStreamBasicDescription aacFormat()
 {
   AudioStreamBasicDescription format{};
@@ -49,6 +35,45 @@ AudioStreamBasicDescription aacFormat()
 } // namespace
 
 namespace hopflow::stream {
+
+AudioStreamBasicDescription stereoPcmFormat(bool floats, Float64 sampleRate)
+{
+  const UInt32 bytes = floats ? sizeof(float) : sizeof(int16_t);
+  AudioStreamBasicDescription format{};
+  format.mSampleRate = sampleRate;
+  format.mFormatID = kAudioFormatLinearPCM;
+  format.mFormatFlags = (floats ? kAudioFormatFlagIsFloat : kAudioFormatFlagIsSignedInteger) | kAudioFormatFlagIsPacked;
+  format.mChannelsPerFrame = kAudioChannels;
+  format.mBitsPerChannel = bytes * 8;
+  format.mFramesPerPacket = 1;
+  format.mBytesPerFrame = kAudioChannels * bytes;
+  format.mBytesPerPacket = format.mBytesPerFrame;
+  return format;
+}
+
+void interleaveStereo(
+    const AudioBufferList &list, const AudioStreamBasicDescription &format, UInt32 frames, std::vector<float> &out
+)
+{
+  out.assign(size_t(frames) * kAudioChannels, 0.0f);
+  if (list.mNumberBuffers == 0 || format.mChannelsPerFrame == 0) {
+    return;
+  }
+  const bool planar = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+  for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
+    // mono is heard on both sides
+    const UInt32 source = std::min(channel, format.mChannelsPerFrame - 1);
+    const auto &buffer = list.mBuffers[planar ? std::min(source, list.mNumberBuffers - 1) : 0];
+    const auto *data = static_cast<const float *>(buffer.mData);
+    if (data == nullptr) {
+      continue;
+    }
+    for (UInt32 frame = 0; frame < frames; ++frame) {
+      out[size_t(frame) * kAudioChannels + channel] =
+          planar ? data[frame] : data[size_t(frame) * buffer.mNumberChannels + source];
+    }
+  }
+}
 
 //
 // MacAacEncoder
@@ -99,7 +124,7 @@ MacAacEncoder::~MacAacEncoder() = default;
 
 bool MacAacEncoder::open()
 {
-  const auto in = pcmFormat();
+  const auto in = stereoPcmFormat();
   const auto out = aacFormat();
   if (AudioConverterNew(&in, &out, &m_impl->converter) != noErr) {
     return false;
@@ -202,7 +227,7 @@ MacAacDecoder::~MacAacDecoder() = default;
 bool MacAacDecoder::open()
 {
   const auto in = aacFormat();
-  const auto out = pcmFormat();
+  const auto out = stereoPcmFormat();
   return AudioConverterNew(&in, &out, &m_impl->converter) == noErr;
 }
 
@@ -306,18 +331,7 @@ struct MacSystemAudioSource::Impl
 
     // ScreenCaptureKit delivers one buffer per channel; the encoder wants them interleaved
     const auto frames = UInt32(CMSampleBufferGetNumSamples(sample));
-    interleaved.assign(size_t(frames) * kAudioChannels, 0.0f);
-    const bool planar = (format->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
-    for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
-      const UInt32 source = std::min<UInt32>(channel, format->mChannelsPerFrame - 1);
-      for (UInt32 frame = 0; frame < frames; ++frame) {
-        const float *data =
-            planar ? static_cast<const float *>(list.mBuffers[std::min(source, list.mNumberBuffers - 1)].mData)
-                   : static_cast<const float *>(list.mBuffers[0].mData);
-        interleaved[size_t(frame) * kAudioChannels + channel] =
-            planar ? data[frame] : data[size_t(frame) * format->mChannelsPerFrame + source];
-      }
-    }
+    interleaveStereo(list, *format, frames, interleaved);
     CFRelease(retained);
 
     const auto packets = encoder.encode(interleaved.data(), frames);
@@ -520,7 +534,7 @@ bool MacAudioSink::configure(const AudioConfig &config)
     return false;
   }
 
-  const auto format = pcmFormat();
+  const auto format = stereoPcmFormat();
   if (AudioQueueNewOutput(&format, Impl::refill, m_impl.get(), nullptr, kCFRunLoopCommonModes, 0, &m_impl->queue) !=
       noErr) {
     return false;
@@ -535,18 +549,7 @@ bool MacAudioSink::configure(const AudioConfig &config)
 
 void MacAudioSink::play(const EncodedAudio &packet)
 {
-  if (m_impl->pcm) {
-    const auto frames = UInt32(packet.data.size() / qsizetype(sizeof(int16_t) * kAudioChannels));
-    const auto *pcm = reinterpret_cast<const int16_t *>(packet.data.constData());
-    std::vector<float> samples(size_t(frames) * kAudioChannels);
-    for (size_t i = 0; i < samples.size(); ++i) {
-      samples[i] = float(pcm[i]) / 32768.0f;
-    }
-    m_impl->buffer.push(samples.data(), frames);
-    return;
-  }
-
-  const auto samples = m_impl->decoder.decode(packet.data);
+  const auto samples = m_impl->pcm ? pcm16ToFloat(packet.data) : m_impl->decoder.decode(packet.data);
   if (!samples.empty()) {
     m_impl->buffer.push(samples.data(), UInt32(samples.size() / kAudioChannels));
   }

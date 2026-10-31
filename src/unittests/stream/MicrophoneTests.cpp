@@ -10,9 +10,6 @@
 
 #include <QTest>
 
-#include <cmath>
-#include <vector>
-
 using namespace hopflow::stream;
 
 void MicrophoneTests::findsVirtualCableInput_data()
@@ -33,28 +30,6 @@ void MicrophoneTests::findsVirtualCableInput()
   QFETCH(QString, name);
   QFETCH(bool, matches);
   QCOMPARE(isVirtualCableInput(name), matches);
-}
-
-void MicrophoneTests::pcm16RoundTrip()
-{
-  const std::vector<float> samples = {0.0f, 0.5f, -0.5f, 0.25f};
-  const auto pcm = floatToPcm16(samples.data(), samples.size());
-  QCOMPARE(pcm.size(), qsizetype(samples.size() * 2));
-
-  const auto back = pcm16ToFloat(pcm);
-  QCOMPARE(back.size(), samples.size());
-  for (size_t i = 0; i < samples.size(); ++i) {
-    QVERIFY(std::abs(back[i] - samples[i]) < 1.0f / 16384);
-  }
-}
-
-void MicrophoneTests::pcm16Clamps()
-{
-  const std::vector<float> loud = {2.0f, -2.0f};
-  const auto pcm = floatToPcm16(loud.data(), loud.size());
-  const auto *values = reinterpret_cast<const int16_t *>(pcm.constData());
-  QCOMPARE(values[0], int16_t(32767));
-  QCOMPARE(values[1], int16_t(-32767));
 }
 
 void MicrophoneTests::configIsPcm()

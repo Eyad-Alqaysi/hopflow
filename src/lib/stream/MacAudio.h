@@ -9,10 +9,20 @@
 #include "stream/AudioBuffer.h"
 #include "stream/MediaInterfaces.h"
 
+#include <CoreAudio/CoreAudioTypes.h>
+
 #include <memory>
 #include <vector>
 
 namespace hopflow::stream {
+
+//! Interleaved stereo linear PCM: floats, or 16 bit integers
+AudioStreamBasicDescription stereoPcmFormat(bool floats = true, Float64 sampleRate = kAudioSampleRate);
+
+//! \p frames of captured floats in \p format, one buffer per channel or interleaved, as interleaved stereo in \p out
+void interleaveStereo(
+    const AudioBufferList &list, const AudioStreamBasicDescription &format, UInt32 frames, std::vector<float> &out
+);
 
 //! AAC-LC encoder on AudioToolbox: 48 kHz stereo floats in, 1024 frame packets out
 class MacAacEncoder

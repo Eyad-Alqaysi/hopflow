@@ -33,20 +33,6 @@ AudioObjectPropertyAddress globalAddress(AudioObjectPropertySelector selector)
   return AudioObjectPropertyAddress{selector, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
 }
 
-AudioStreamBasicDescription stereoFloat(Float64 sampleRate)
-{
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = sampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = 32;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * sizeof(float);
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
-}
-
 //! Hopflow's own audio process, or kAudioObjectUnknown if it has none
 API_AVAILABLE(macos(14.2)) AudioObjectID ownProcessObject()
 {
@@ -99,8 +85,8 @@ public:
     if (sampleRate == kAudioSampleRate) {
       return true;
     }
-    const auto in = stereoFloat(sampleRate);
-    const auto out = stereoFloat(kAudioSampleRate);
+    const auto in = stereoPcmFormat(true, sampleRate);
+    const auto out = stereoPcmFormat();
     return AudioConverterNew(&in, &out, &m_converter) == noErr;
   }
 
@@ -276,22 +262,9 @@ struct MacAudioTap::Impl
 
     // a tap delivers floats, one buffer per channel or interleaved; the encoder wants stereo interleaved
     const bool planar = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
-    const UInt32 channels = format.mChannelsPerFrame;
     const UInt32 frames =
         input->mBuffers[0].mDataByteSize / UInt32(sizeof(float) * (planar ? 1 : input->mBuffers[0].mNumberChannels));
-    interleaved.assign(size_t(frames) * kAudioChannels, 0.0f);
-    for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
-      const UInt32 source = std::min(channel, channels - 1);
-      const auto &buffer = input->mBuffers[planar ? std::min(source, input->mNumberBuffers - 1) : 0];
-      const auto *data = static_cast<const float *>(buffer.mData);
-      if (data == nullptr) {
-        continue;
-      }
-      for (UInt32 frame = 0; frame < frames; ++frame) {
-        interleaved[size_t(frame) * kAudioChannels + channel] =
-            planar ? data[frame] : data[size_t(frame) * buffer.mNumberChannels + source];
-      }
-    }
+    interleaveStereo(*input, format, frames, interleaved);
 
     const auto samples = rate.convert(std::move(interleaved));
     const auto packets = encoder.encode(samples.data(), UInt32(samples.size() / kAudioChannels));

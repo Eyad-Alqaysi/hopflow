@@ -10,6 +10,7 @@
 
 #include <QTest>
 
+#include <cmath>
 #include <vector>
 
 using namespace hopflow::stream;
@@ -134,6 +135,28 @@ void AudioBufferTests::pcm16PacketsAreTenMilliseconds()
   // out of range samples are clipped, not wrapped
   QCOMPARE(samples[kPcmFramesPerPacket * kAudioChannels - 2], int16_t(32767));
   QCOMPARE(samples[kPcmFramesPerPacket * kAudioChannels - 1], int16_t(-32767));
+}
+
+void AudioBufferTests::pcm16RoundTrip()
+{
+  const std::vector<float> samples = {0.0f, 0.5f, -0.5f, 0.25f};
+  const auto pcm = floatToPcm16(samples.data(), samples.size());
+  QCOMPARE(pcm.size(), qsizetype(samples.size() * 2));
+
+  const auto back = pcm16ToFloat(pcm);
+  QCOMPARE(back.size(), samples.size());
+  for (size_t i = 0; i < samples.size(); ++i) {
+    QVERIFY(std::abs(back[i] - samples[i]) < 1.0f / 16384);
+  }
+}
+
+void AudioBufferTests::pcm16Clamps()
+{
+  const std::vector<float> loud = {2.0f, -2.0f};
+  const auto pcm = floatToPcm16(loud.data(), loud.size());
+  const auto *values = reinterpret_cast<const int16_t *>(pcm.constData());
+  QCOMPARE(values[0], int16_t(32767));
+  QCOMPARE(values[1], int16_t(-32767));
 }
 
 QTEST_MAIN(AudioBufferTests)
