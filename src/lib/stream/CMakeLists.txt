@@ -23,6 +23,7 @@ add_library(stream STATIC
   StreamSender.h
   TestPattern.cpp
   TestPattern.h
+  VirtualDisplayMode.h
   Yuv.cpp
   Yuv.h
 )
@@ -31,15 +32,17 @@ target_link_libraries(stream PUBLIC common net Qt6::Network Qt6::Gui)
 
 if(APPLE)
   target_sources(stream PRIVATE MacAudio.h MacAudio.mm MacVideo.h MacVideo.mm)
-  set_source_files_properties(MacAudio.mm MacVideo.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_sources(stream PRIVATE CGVirtualDisplayPrivate.h MacVirtualDisplay.h MacVirtualDisplay.mm)
+  set_source_files_properties(MacAudio.mm MacVideo.mm MacVirtualDisplay.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
   find_library(AUDIOTOOLBOX_LIBRARY AudioToolbox REQUIRED)
   find_library(APPKIT_LIBRARY AppKit REQUIRED)
+  find_library(COREGRAPHICS_LIBRARY CoreGraphics REQUIRED)
   find_library(COREMEDIA_LIBRARY CoreMedia REQUIRED)
   find_library(COREVIDEO_LIBRARY CoreVideo REQUIRED)
   find_library(VIDEOTOOLBOX_LIBRARY VideoToolbox REQUIRED)
   # ScreenCaptureKit is weak so the app still starts on macOS 12.0 to 12.2
   target_link_libraries(stream PRIVATE
-    ${APPKIT_LIBRARY} ${AUDIOTOOLBOX_LIBRARY} ${COREMEDIA_LIBRARY} ${COREVIDEO_LIBRARY} ${VIDEOTOOLBOX_LIBRARY}
+    ${APPKIT_LIBRARY} ${AUDIOTOOLBOX_LIBRARY} ${COREGRAPHICS_LIBRARY} ${COREMEDIA_LIBRARY} ${COREVIDEO_LIBRARY} ${VIDEOTOOLBOX_LIBRARY}
     "-weak_framework ScreenCaptureKit"
   )
 endif()

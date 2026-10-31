@@ -10,6 +10,7 @@
 #if defined(__APPLE__)
 #include "stream/MacAudio.h"
 #include "stream/MacVideo.h"
+#include "stream/MacVirtualDisplay.h"
 #elif defined(_WIN32)
 #include "stream/WinAudio.h"
 #include "stream/WinVideo.h"
@@ -66,6 +67,9 @@ std::unique_ptr<IAudioSource> createMicrophoneSource()
 
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
 {
+#if defined(__APPLE__)
+  return std::make_unique<MacVirtualDisplay>();
+#endif
   return nullptr;
 }
 
