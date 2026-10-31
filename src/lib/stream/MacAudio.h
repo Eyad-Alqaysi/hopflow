@@ -9,6 +9,7 @@
 #include "stream/AudioBuffer.h"
 #include "stream/MediaInterfaces.h"
 
+#include <CoreAudio/AudioHardwareBase.h>
 #include <CoreAudio/CoreAudioTypes.h>
 
 #include <memory>
@@ -76,6 +77,24 @@ private:
   const AudioCodec m_codec;
   MacAacEncoder m_aac;
   Pcm16Packetizer m_pcm;
+};
+
+//! Plays what a PcmJitterBuffer holds through an output audio unit
+class MacPcmOutput
+{
+public:
+  explicit MacPcmOutput(PcmJitterBuffer &buffer);
+  ~MacPcmOutput();
+  MacPcmOutput(const MacPcmOutput &) = delete;
+  MacPcmOutput &operator=(const MacPcmOutput &) = delete;
+
+  //! Play on \p device, an AudioDeviceID, pulling about \p bufferFrames at a time
+  bool start(AudioObjectID device, UInt32 bufferFrames);
+
+  struct Impl;
+
+private:
+  std::unique_ptr<Impl> m_impl;
 };
 
 //! Captures what the Mac is playing with ScreenCaptureKit (macOS 13 and later)

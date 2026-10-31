@@ -282,6 +282,84 @@ std::vector<EncodedAudio> MacSoundEncoder::encode(const float *samples, uint32_t
 } // namespace hopflow::stream
 
 //
+// MacPcmOutput
+//
+
+namespace hopflow::stream {
+
+struct MacPcmOutput::Impl
+{
+  explicit Impl(PcmJitterBuffer &buffer) : buffer(buffer)
+  {
+  }
+
+  PcmJitterBuffer &buffer;
+  AudioComponentInstance unit = nullptr;
+
+  ~Impl()
+  {
+    if (unit != nullptr) {
+      AudioOutputUnitStop(unit);
+      AudioUnitUninitialize(unit);
+      AudioComponentInstanceDispose(unit);
+    }
+  }
+
+  //! Runs on the device's real time thread
+  static OSStatus render(
+      void *user, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *, UInt32, UInt32 frames,
+      AudioBufferList *data
+  )
+  {
+    auto *self = static_cast<Impl *>(user);
+    if (self->buffer.pull(static_cast<float *>(data->mBuffers[0].mData), frames) == 0) {
+      *flags |= kAudioUnitRenderAction_OutputIsSilence;
+    }
+    return noErr;
+  }
+};
+
+MacPcmOutput::MacPcmOutput(PcmJitterBuffer &buffer) : m_impl(std::make_unique<Impl>(buffer))
+{
+}
+
+MacPcmOutput::~MacPcmOutput() = default;
+
+bool MacPcmOutput::start(AudioObjectID device, UInt32 bufferFrames)
+{
+  const AudioComponentDescription description{
+      kAudioUnitType_Output, kAudioUnitSubType_HALOutput, kAudioUnitManufacturer_Apple, 0, 0
+  };
+  AudioComponent component = AudioComponentFindNext(nullptr, &description);
+  if (component == nullptr || AudioComponentInstanceNew(component, &m_impl->unit) != noErr) {
+    m_impl->unit = nullptr;
+    return false;
+  }
+
+  // the unit converts 48 kHz stereo floats to whatever the device runs at
+  const auto format = stereoPcmFormat();
+  const AURenderCallbackStruct callback{Impl::render, m_impl.get()};
+  if (AudioUnitSetProperty(
+          m_impl->unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, sizeof(device)
+      ) != noErr ||
+      AudioUnitSetProperty(
+          m_impl->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, sizeof(format)
+      ) != noErr ||
+      AudioUnitSetProperty(
+          m_impl->unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback)
+      ) != noErr) {
+    return false;
+  }
+  // only a request: the device may keep a larger buffer, which costs latency but still plays
+  AudioUnitSetProperty(
+      m_impl->unit, kAudioDevicePropertyBufferFrameSize, kAudioUnitScope_Global, 0, &bufferFrames, sizeof(bufferFrames)
+  );
+  return AudioUnitInitialize(m_impl->unit) == noErr && AudioOutputUnitStart(m_impl->unit) == noErr;
+}
+
+} // namespace hopflow::stream
+
+//
 // MacSystemAudioSource
 //
 

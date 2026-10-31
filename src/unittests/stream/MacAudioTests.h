@@ -14,4 +14,5 @@ class MacAudioTests : public QObject
 
 private Q_SLOTS:
   void aacRoundTrip();
+  void pcmOutputPlaysOnDefaultDevice();
 };
