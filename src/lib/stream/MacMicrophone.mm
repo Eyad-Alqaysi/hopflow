@@ -63,6 +63,7 @@ struct MacMicrophoneSource::Impl
   IAudioSource::PacketReady onPacket;
   IAudioSource::Failed onFailed;
   int64_t capturedFrames = 0;
+  std::unique_ptr<MacDefaultDeviceWatch> watch;
 
   void fail(const QString &message)
   {
@@ -100,6 +101,23 @@ struct MacMicrophoneSource::Impl
       running = false;
       onFailed(QStringLiteral("this Mac has no microphone to send"));
     }
+  }
+
+  //! Move to the new default microphone; runs on the watch's queue
+  void reopen()
+  {
+    AudioQueueRef old = nullptr;
+    {
+      std::scoped_lock lock(mutex);
+      old = std::exchange(queue, nullptr);
+    }
+    // not capturing: stopped, or still waiting for permission, and open() will find the new device then
+    if (old == nullptr) {
+      return;
+    }
+    AudioQueueStop(old, true);
+    AudioQueueDispose(old, true);
+    open();
   }
 
   //! Runs on the queue's own thread
@@ -145,6 +163,13 @@ void MacMicrophoneSource::start(ConfigReady onConfig, PacketReady onPacket, Fail
   }
   onConfig(microphoneConfig());
 
+  impl->watch =
+      std::make_unique<MacDefaultDeviceWatch>(MacDefaultDeviceWatch::Direction::Input, [weak = std::weak_ptr(impl)] {
+        if (const auto impl = weak.lock()) {
+          impl->reopen();
+        }
+      });
+
   const auto status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
   if (status == AVAuthorizationStatusAuthorized) {
     impl->open();
@@ -164,6 +189,7 @@ void MacMicrophoneSource::start(ConfigReady onConfig, PacketReady onPacket, Fail
 
 void MacMicrophoneSource::stop()
 {
+  m_impl->watch.reset();
   AudioQueueRef queue = nullptr;
   {
     std::scoped_lock lock(m_impl->mutex);

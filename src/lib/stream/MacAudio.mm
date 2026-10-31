@@ -12,6 +12,8 @@
 #import <CoreMedia/CoreMedia.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 
+#include <QDebug>
+
 #include <mutex>
 
 using namespace hopflow::stream;
@@ -72,6 +74,44 @@ void interleaveStereo(
       out[size_t(frame) * kAudioChannels + channel] =
           planar ? data[frame] : data[size_t(frame) * buffer.mNumberChannels + source];
     }
+  }
+}
+
+//
+// MacDefaultDeviceWatch
+//
+
+struct MacDefaultDeviceWatch::Impl
+{
+  AudioObjectPropertyAddress address{};
+  dispatch_queue_t queue = dispatch_queue_create("io.github.eyad_alqaysi.hopflow.defaultdevice", DISPATCH_QUEUE_SERIAL);
+  AudioObjectPropertyListenerBlock listener = nil;
+};
+
+MacDefaultDeviceWatch::MacDefaultDeviceWatch(Direction direction, std::function<void()> changed)
+    : m_impl(std::make_unique<Impl>())
+{
+  m_impl->address = AudioObjectPropertyAddress{
+      direction == Direction::Input ? kAudioHardwarePropertyDefaultInputDevice
+                                    : kAudioHardwarePropertyDefaultOutputDevice,
+      kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
+  };
+  m_impl->listener = ^(UInt32, const AudioObjectPropertyAddress *) {
+    changed();
+  };
+  if (const auto status = AudioObjectAddPropertyListenerBlock(
+          kAudioObjectSystemObject, &m_impl->address, m_impl->queue, m_impl->listener
+      );
+      status != noErr) {
+    m_impl->listener = nil;
+    qWarning().noquote() << "cannot follow changes of the default sound device, error" << status;
+  }
+}
+
+MacDefaultDeviceWatch::~MacDefaultDeviceWatch()
+{
+  if (m_impl->listener != nil) {
+    AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject, &m_impl->address, m_impl->queue, m_impl->listener);
   }
 }
 

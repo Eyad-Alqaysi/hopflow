@@ -12,6 +12,7 @@
 #include <CoreAudio/AudioHardwareBase.h>
 #include <CoreAudio/CoreAudioTypes.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,31 @@ AudioStreamBasicDescription stereoPcmFormat(bool floats = true, Float64 sampleRa
 void interleaveStereo(
     const AudioBufferList &list, const AudioStreamBasicDescription &format, UInt32 frames, std::vector<float> &out
 );
+
+//! Calls \p changed on a queue of its own each time the default output, or input, device changes
+/*!
+A call already under way can finish after the watch is destroyed, so
+\p changed must hold only weak references to what it restarts.
+*/
+class MacDefaultDeviceWatch
+{
+public:
+  enum class Direction
+  {
+    Output,
+    Input
+  };
+
+  MacDefaultDeviceWatch(Direction direction, std::function<void()> changed);
+  ~MacDefaultDeviceWatch();
+  MacDefaultDeviceWatch(const MacDefaultDeviceWatch &) = delete;
+  MacDefaultDeviceWatch &operator=(const MacDefaultDeviceWatch &) = delete;
+
+  struct Impl;
+
+private:
+  std::unique_ptr<Impl> m_impl;
+};
 
 //! AAC-LC encoder on AudioToolbox: 48 kHz stereo floats in, 1024 frame packets out
 class MacAacEncoder
