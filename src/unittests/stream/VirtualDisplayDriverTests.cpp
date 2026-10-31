@@ -80,7 +80,8 @@ void VirtualDisplayDriverTests::readsShippedSettings()
 
 void VirtualDisplayDriverTests::offeredModeLeavesSettingsAlone()
 {
-  QCOMPARE(settingsOffering(kShipped, Mode{2560, 1440, 120}), std::optional<QString>(kShipped));
+  const Mode offered{2560, 1440, 120};
+  QCOMPARE(settingsOffering(kShipped, offered), std::optional<QString>(kShipped));
 }
 
 void VirtualDisplayDriverTests::addsMissingMode()
@@ -117,21 +118,23 @@ void VirtualDisplayDriverTests::addsModeToEmptyResolutions_data()
 void VirtualDisplayDriverTests::addsModeToEmptyResolutions()
 {
   QFETCH(QString, xml);
-  const auto updated = settingsOffering(xml, Mode{1512, 982, 60});
+  const Mode mode{1512, 982, 60};
+  const auto updated = settingsOffering(xml, mode);
   QVERIFY(updated);
   const auto settings = parseSettings(*updated);
   QVERIFY(settings);
-  QCOMPARE(settings->modes, QList<Mode>{Mode(1512, 982, 60)});
+  QCOMPARE(settings->modes, QList<Mode>{mode});
 }
 
 void VirtualDisplayDriverTests::writesSettingsWhenMissing()
 {
-  const auto created = settingsOffering(QString(), Mode{1512, 982, 120});
+  const Mode mode{1512, 982, 120};
+  const auto created = settingsOffering(QString(), mode);
   QVERIFY(created);
   const auto settings = parseSettings(*created);
   QVERIFY(settings);
   QCOMPARE(settings->monitorCount, 1);
-  QCOMPARE(settings->modes, QList<Mode>{Mode(1512, 982, 120)});
+  QCOMPARE(settings->modes, QList<Mode>{mode});
 }
 
 void VirtualDisplayDriverTests::rejectsBrokenSettings()
