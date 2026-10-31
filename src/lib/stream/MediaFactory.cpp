@@ -13,6 +13,7 @@
 #elif defined(_WIN32)
 #include "stream/WinAudio.h"
 #include "stream/WinVideo.h"
+#include "stream/WinVirtualDisplay.h"
 #endif
 
 namespace hopflow::stream {
@@ -68,7 +69,11 @@ std::unique_ptr<IAudioSource> createMicrophoneSource()
 
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
 {
+#if defined(_WIN32)
+  return std::make_unique<WinVirtualDisplay>();
+#else
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec)

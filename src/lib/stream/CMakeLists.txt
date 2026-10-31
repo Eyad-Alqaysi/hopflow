@@ -47,8 +47,12 @@ if(APPLE)
 endif()
 
 if(WIN32)
-  target_sources(stream PRIVATE WinAudio.cpp WinAudio.h WinMedia.cpp WinMedia.h WinVideo.cpp WinVideo.h)
-  target_link_libraries(stream PRIVATE d3d11 dxgi mfplat mfuuid wmcodecdspuuid ole32 oleaut32)
+  target_sources(stream PRIVATE
+    WinAudio.cpp WinAudio.h WinMedia.cpp WinMedia.h WinVideo.cpp WinVideo.h WinVirtualDisplay.cpp WinVirtualDisplay.h
+  )
+  target_link_libraries(stream PRIVATE
+    d3d11 dxgi mfplat mfuuid wmcodecdspuuid ole32 oleaut32 setupapi cfgmgr32 user32 advapi32
+  )
   # windows.h would otherwise define min and max macros that break std::min and std::max
   target_compile_definitions(stream PRIVATE NOMINMAX)
 endif()
