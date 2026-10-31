@@ -13,6 +13,7 @@
 #include "Diagnostic.h"
 #include "StyleUtils.h"
 
+#include "AudioRouteController.h"
 #include "ScreenShareController.h"
 #include "dialogs/AboutDialog.h"
 #include "dialogs/ClientConfigDialog.h"
@@ -151,20 +152,20 @@ MainWindow::MainWindow()
   m_actionShowHelp->setMenuRole(QAction::NoRole);
   m_actionShowHelp->setShortcut(QKeySequence::HelpContents);
 
-  m_screenShare = new ScreenShareController(
-      this,
-      [this] {
-        // offer the computers on the other end of the main connection
-        if (m_coreProcess.mode() == CoreMode::Client) {
-          return QStringList{Settings::value(Settings::Client::RemoteHost).toString()};
-        }
-        return m_connectedClients;
-      },
-      this
-  );
-  connect(m_screenShare, &ScreenShareController::notify, this, [this](const QString &message) {
-    m_trayIcon->showMessage(kAppName, message);
-  });
+  const auto streamTargets = [this] {
+    // offer the computers on the other end of the main connection
+    if (m_coreProcess.mode() == CoreMode::Client) {
+      return QStringList{Settings::value(Settings::Client::RemoteHost).toString()};
+    }
+    return m_connectedClients;
+  };
+  const auto showNotification = [this](const QString &message) { m_trayIcon->showMessage(kAppName, message); };
+  m_screenShare = new ScreenShareController(this, streamTargets, this);
+  connect(m_screenShare, &ScreenShareController::notify, this, showNotification);
+  m_soundRoute = new AudioRouteController(hopflow::stream::SessionKind::Sound, this, streamTargets, this);
+  connect(m_soundRoute, &AudioRouteController::notify, this, showNotification);
+  m_micRoute = new AudioRouteController(hopflow::stream::SessionKind::Microphone, this, streamTargets, this);
+  connect(m_micRoute, &AudioRouteController::notify, this, showNotification);
 
   // Setup the Instance Checking
   // In case of a previous crash remove first
@@ -715,6 +716,10 @@ void MainWindow::createMenuBar()
   m_menuFile->addSeparator();
   m_menuFile->addAction(m_screenShare->shareAction());
   m_menuFile->addAction(m_screenShare->stopAction());
+  m_menuFile->addAction(m_soundRoute->sendAction());
+  m_menuFile->addAction(m_soundRoute->stopAction());
+  m_menuFile->addAction(m_micRoute->sendAction());
+  m_menuFile->addAction(m_micRoute->stopAction());
   m_menuFile->addSeparator();
   m_menuFile->addAction(m_actionQuit);
 
@@ -739,7 +744,8 @@ void MainWindow::setupTrayIcon()
   auto trayMenu = new QMenu(this);
   trayMenu->addActions(
       {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_screenShare->shareAction(),
-       m_screenShare->stopAction(), m_actionMinimize, m_actionRestore, m_actionTrayQuit}
+       m_screenShare->stopAction(), m_soundRoute->sendAction(), m_soundRoute->stopAction(), m_micRoute->sendAction(),
+       m_micRoute->stopAction(), m_actionMinimize, m_actionRestore, m_actionTrayQuit}
   );
   trayMenu->insertSeparator(m_screenShare->shareAction());
   trayMenu->insertSeparator(m_actionMinimize);
