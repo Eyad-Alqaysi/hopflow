@@ -9,7 +9,10 @@
 #include "stream/AudioBuffer.h"
 #include "stream/WinMedia.h"
 
+#include <QDebug>
+
 #include <audioclient.h>
+#include <endpointvolume.h>
 #include <ksmedia.h>
 #include <mferror.h>
 #include <mmdeviceapi.h>
@@ -20,6 +23,7 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -48,18 +52,59 @@ WAVEFORMATEXTENSIBLE floatFormat()
   return format;
 }
 
-ComPtr<IAudioClient> defaultAudioClient()
+ComPtr<IMMDevice> defaultRenderDevice()
 {
   ComPtr<IMMDeviceEnumerator> enumerator;
   ComPtr<IMMDevice> device;
-  ComPtr<IAudioClient> client;
   if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
-      FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device)) ||
-      FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client))) {
+      FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
+    return nullptr;
+  }
+  return device;
+}
+
+ComPtr<IAudioClient> defaultAudioClient()
+{
+  auto device = defaultRenderDevice();
+  ComPtr<IAudioClient> client;
+  if (!device || FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client))) {
     return nullptr;
   }
   return client;
 }
+
+//! Mutes the default output while it exists, then sets it back as it was
+class EndpointMute
+{
+public:
+  EndpointMute()
+  {
+    auto device = defaultRenderDevice();
+    if (!device || FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &m_volume)) ||
+        FAILED(m_volume->GetMute(&m_wasMuted)) || FAILED(m_volume->SetMute(TRUE, nullptr))) {
+      m_volume.Reset();
+    }
+  }
+
+  ~EndpointMute()
+  {
+    if (m_volume) {
+      m_volume->SetMute(m_wasMuted, nullptr);
+    }
+  }
+
+  EndpointMute(const EndpointMute &) = delete;
+  EndpointMute &operator=(const EndpointMute &) = delete;
+
+  bool isActive() const
+  {
+    return m_volume != nullptr;
+  }
+
+private:
+  ComPtr<IAudioEndpointVolume> m_volume;
+  BOOL m_wasMuted = FALSE;
+};
 
 ComPtr<IMFMediaType> audioType(const GUID &subtype, UINT32 bitsPerSample)
 {
@@ -117,11 +162,12 @@ ComPtr<IMFTransform> aacEncoder(QString &error)
 
 struct WinSystemAudioSource::Impl
 {
-  explicit Impl(AudioCodec codec) : codec(codec)
+  Impl(AudioCodec codec, bool muteLocal) : codec(codec), muteLocal(muteLocal)
   {
   }
 
   const AudioCodec codec;
+  const bool muteLocal;
   std::thread worker;
   std::atomic<bool> running{false};
   std::mutex callbackMutex;
@@ -174,6 +220,15 @@ void WinSystemAudioSource::Impl::run()
       FAILED(client->GetService(IID_PPV_ARGS(&capture))) || FAILED(client->Start())) {
     fail(QStringLiteral("cannot capture the sound playing on this PC"));
     return;
+  }
+
+  // the speakers go quiet, but loopback still hears the mix; unmuted again when this returns
+  std::optional<EndpointMute> mute;
+  if (muteLocal) {
+    mute.emplace();
+    if (!mute->isActive()) {
+      qWarning().noquote() << "cannot mute this PC while sending its sound";
+    }
   }
 
   int64_t capturedFrames = 0;
@@ -243,7 +298,8 @@ void WinSystemAudioSource::Impl::run()
   client->Stop();
 }
 
-WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec) : m_impl(std::make_unique<Impl>(codec))
+WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec, bool muteLocal)
+    : m_impl(std::make_unique<Impl>(codec, muteLocal))
 {
 }
 

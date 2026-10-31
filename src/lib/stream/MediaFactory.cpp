@@ -9,6 +9,7 @@
 
 #if defined(__APPLE__)
 #include "stream/MacAudio.h"
+#include "stream/MacAudioTap.h"
 #include "stream/MacVideo.h"
 #elif defined(_WIN32)
 #include "stream/WinAudio.h"
@@ -33,15 +34,19 @@ std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId)
   return nullptr;
 }
 
-std::unique_ptr<IAudioSource> createSystemAudioSource(bool, AudioLatency latency)
+std::unique_ptr<IAudioSource> createSystemAudioSource([[maybe_unused]] bool muteLocal, AudioLatency latency)
 {
   [[maybe_unused]] const auto codec = latency == AudioLatency::Low ? AudioCodec::Pcm16 : AudioCodec::Aac;
 #if defined(__APPLE__)
+  // only a process tap can mute the Mac; before macOS 14.2 the sound also keeps playing here
+  if (muteLocal && MacAudioTap::isAvailable()) {
+    return std::make_unique<MacAudioTap>(codec, muteLocal);
+  }
   if (MacSystemAudioSource::isAvailable()) {
     return std::make_unique<MacSystemAudioSource>(codec);
   }
 #elif defined(_WIN32)
-  return std::make_unique<WinSystemAudioSource>(codec);
+  return std::make_unique<WinSystemAudioSource>(codec, muteLocal);
 #endif
   return nullptr;
 }
