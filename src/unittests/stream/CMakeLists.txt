@@ -54,3 +54,11 @@ create_test(
   SOURCE AudioBufferTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
+
+create_test(
+  NAME VirtualDisplayDriverTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE VirtualDisplayDriverTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)

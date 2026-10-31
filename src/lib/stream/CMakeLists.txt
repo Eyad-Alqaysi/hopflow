@@ -23,6 +23,8 @@ add_library(stream STATIC
   StreamSender.h
   TestPattern.cpp
   TestPattern.h
+  VirtualDisplayDriver.cpp
+  VirtualDisplayDriver.h
   Yuv.cpp
   Yuv.h
 )
