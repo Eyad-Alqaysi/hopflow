@@ -114,6 +114,15 @@ elseif(APPLE)
     if (APPLE_CODESIGN_DEV)
       configure_mac_codesign(${target})
     endif()
+    # ship the virtual microphone driver and its installer inside the app
+    add_dependencies(${target} HopflowMic)
+    add_custom_command(
+      TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "$<TARGET_BUNDLE_DIR:HopflowMic>" "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/HopflowMic.driver"
+      COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_SOURCE_DIR}/deploy/mac/install-hopflow-mic.sh" "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/"
+    )
   else()
     set_target_properties(${target} PROPERTIES MACOSX_BUNDLE FALSE)
   endif()

@@ -62,3 +62,26 @@ create_test(
   SOURCE MicrophoneTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
+
+# the driver's ring buffer is header only, so it is tested on every platform
+create_test(
+  NAME LoopbackRingTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE LoopbackRingTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+target_include_directories(LoopbackRingTests PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/hopflow-mic-driver")
+
+if(APPLE)
+  create_test(
+    NAME MicDriverTests
+    DEPENDS stream
+    LIBS base arch ${extra_libs}
+    SOURCE MicDriverTests.cpp
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+  )
+  add_dependencies(MicDriverTests HopflowMic)
+  target_compile_definitions(MicDriverTests PRIVATE HOPFLOW_MIC_DRIVER="$<TARGET_BUNDLE_DIR:HopflowMic>")
+  target_link_libraries(MicDriverTests "-framework CoreAudio" "-framework CoreFoundation")
+endif()
