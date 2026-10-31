@@ -103,8 +103,10 @@ struct MacMicrophoneSource::Impl
   }
 
   //! Runs on the queue's own thread
-  static void
-  captured(void *user, AudioQueueRef queue, AudioQueueBufferRef buffer, const AudioTimeStamp *, UInt32, const AudioStreamPacketDescription *)
+  static void captured(
+      void *user, AudioQueueRef queue, AudioQueueBufferRef buffer, const AudioTimeStamp *, UInt32,
+      const AudioStreamPacketDescription *
+  )
   {
     auto *self = static_cast<Impl *>(user);
     std::scoped_lock lock(self->mutex);
