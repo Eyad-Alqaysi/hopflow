@@ -43,6 +43,7 @@ SPDX-License-Identifier = "GPL-2.0-only"
 path = [
    "LATEST_VERSION"
  , "NOTICE"
+ , "src/apps/hopflow-mic-driver/Info.plist.in"
 ]
 SPDX-FileCopyrightText = "Hopflow Contributors"
 SPDX-License-Identifier = "MIT"
