@@ -17,6 +17,7 @@
 #include "stream/WinAudio.h"
 #include "stream/WinMicrophone.h"
 #include "stream/WinVideo.h"
+#include "stream/WinVirtualDisplay.h"
 #endif
 
 namespace hopflow::stream {
@@ -30,11 +31,7 @@ std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId)
     return std::make_unique<MacScreenSource>(display);
   }
 #elif defined(_WIN32)
-  if (!displayId.isEmpty()) {
-    // capture of a chosen display is added per platform with the virtual display
-    return nullptr;
-  }
-  return std::make_unique<WinScreenSource>();
+  return std::make_unique<WinScreenSource>(displayId);
 #endif
   return nullptr;
 }
@@ -85,8 +82,11 @@ std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
 {
 #if defined(__APPLE__)
   return std::make_unique<MacVirtualDisplay>();
-#endif
+#elif defined(_WIN32)
+  return std::make_unique<WinVirtualDisplay>();
+#else
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec)

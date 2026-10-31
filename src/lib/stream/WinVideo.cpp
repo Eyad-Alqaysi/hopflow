@@ -289,6 +289,7 @@ struct Pointer
 
 struct WinScreenSource::Impl
 {
+  QString displayId;
   std::thread worker;
   std::atomic<bool> running{false};
   std::atomic<bool> keyframeRequested{true};
@@ -313,26 +314,27 @@ void WinScreenSource::Impl::run(Preset preset)
 {
   MediaFoundationScope mediaFoundation;
 
-  // the primary display, through its adapter
-  ComPtr<ID3D11Device> device;
-  ComPtr<ID3D11DeviceContext> context;
-  HRESULT hr = D3D11CreateDevice(
-      nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
-      nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context
-  );
-  if (FAILED(hr)) {
-    fail(hresultText("starting Direct3D", hr));
+  // the display, through the adapter it belongs to: a virtual display sits on whichever GPU renders it
+  ComPtr<IDXGIAdapter1> adapter;
+  ComPtr<IDXGIOutput> output;
+  ComPtr<IDXGIOutput1> output1;
+  if (!findOutput(displayId, adapter, output) || FAILED(output.As(&output1))) {
+    fail(
+        displayId.isEmpty() ? QStringLiteral("no display to capture")
+                            : QStringLiteral("display %1 is not part of the desktop").arg(displayId)
+    );
     return;
   }
 
-  ComPtr<IDXGIDevice> dxgiDevice;
-  ComPtr<IDXGIAdapter> adapter;
-  ComPtr<IDXGIOutput> output;
-  ComPtr<IDXGIOutput1> output1;
-  device.As(&dxgiDevice);
-  dxgiDevice->GetAdapter(&adapter);
-  if (FAILED(adapter->EnumOutputs(0, &output)) || FAILED(output.As(&output1))) {
-    fail(QStringLiteral("no display to capture"));
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11DeviceContext> context;
+  HRESULT hr = D3D11CreateDevice(
+      adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+      D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &device,
+      nullptr, &context
+  );
+  if (FAILED(hr)) {
+    fail(hresultText("starting Direct3D", hr));
     return;
   }
 
@@ -608,8 +610,9 @@ void WinScreenSource::Impl::run(Preset preset)
   }
 }
 
-WinScreenSource::WinScreenSource() : m_impl(std::make_unique<Impl>())
+WinScreenSource::WinScreenSource(const QString &displayId) : m_impl(std::make_unique<Impl>())
 {
+  m_impl->displayId = displayId;
 }
 
 WinScreenSource::~WinScreenSource()
