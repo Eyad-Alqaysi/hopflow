@@ -327,8 +327,11 @@ MacPcmOutput::~MacPcmOutput() = default;
 
 bool MacPcmOutput::start(AudioObjectID device, UInt32 bufferFrames)
 {
+  // the default output unit is an AUHAL that tracks the default device itself
+  const bool followDefault = device == kAudioObjectUnknown;
   const AudioComponentDescription description{
-      kAudioUnitType_Output, kAudioUnitSubType_HALOutput, kAudioUnitManufacturer_Apple, 0, 0
+      kAudioUnitType_Output, followDefault ? kAudioUnitSubType_DefaultOutput : kAudioUnitSubType_HALOutput,
+      kAudioUnitManufacturer_Apple, 0, 0
   };
   AudioComponent component = AudioComponentFindNext(nullptr, &description);
   if (component == nullptr || AudioComponentInstanceNew(component, &m_impl->unit) != noErr) {
@@ -339,9 +342,10 @@ bool MacPcmOutput::start(AudioObjectID device, UInt32 bufferFrames)
   // the unit converts 48 kHz stereo floats to whatever the device runs at
   const auto format = stereoPcmFormat();
   const AURenderCallbackStruct callback{Impl::render, m_impl.get()};
-  if (AudioUnitSetProperty(
-          m_impl->unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, sizeof(device)
-      ) != noErr ||
+  if ((!followDefault &&
+       AudioUnitSetProperty(
+           m_impl->unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, sizeof(device)
+       ) != noErr) ||
       AudioUnitSetProperty(
           m_impl->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, sizeof(format)
       ) != noErr ||
@@ -566,34 +570,16 @@ struct MacAudioSink::Impl
 {
   explicit Impl(AudioLatency latency)
       : buffer(kAudioChannels, jitterDepth(latency)),
-        // low latency queues 4 buffers of 5 ms, which still covers one 512 frame device cycle
-        bufferFrames(latency == AudioLatency::Low ? kAudioSampleRate / 200 : kAudioSampleRate / 100),
-        bufferCount(latency == AudioLatency::Low ? 4 : 3)
+        bufferFrames(latency == AudioLatency::Low ? kAudioSampleRate / 200 : kAudioSampleRate / 100)
   {
   }
 
   PcmJitterBuffer buffer;
+  //! 5 ms at a time for low latency, 10 ms otherwise
   const UInt32 bufferFrames;
-  const int bufferCount;
   MacAacDecoder decoder;
-  AudioQueueRef queue = nullptr;
+  MacPcmOutput output{buffer};
   bool pcm = false;
-
-  ~Impl()
-  {
-    if (queue != nullptr) {
-      AudioQueueStop(queue, true);
-      AudioQueueDispose(queue, true);
-    }
-  }
-
-  static void refill(void *user, AudioQueueRef queue, AudioQueueBufferRef buffer)
-  {
-    auto *self = static_cast<Impl *>(user);
-    self->buffer.pull(static_cast<float *>(buffer->mAudioData), self->bufferFrames);
-    buffer->mAudioDataByteSize = self->bufferFrames * kAudioChannels * sizeof(float);
-    AudioQueueEnqueueBuffer(queue, buffer, 0, nullptr);
-  }
 };
 
 MacAudioSink::MacAudioSink(AudioLatency latency) : m_impl(std::make_unique<Impl>(latency))
@@ -611,18 +597,7 @@ bool MacAudioSink::configure(const AudioConfig &config)
   if (!m_impl->pcm && !m_impl->decoder.open()) {
     return false;
   }
-
-  const auto format = stereoPcmFormat();
-  if (AudioQueueNewOutput(&format, Impl::refill, m_impl.get(), nullptr, kCFRunLoopCommonModes, 0, &m_impl->queue) !=
-      noErr) {
-    return false;
-  }
-  for (int i = 0; i < m_impl->bufferCount; ++i) {
-    AudioQueueBufferRef buffer = nullptr;
-    AudioQueueAllocateBuffer(m_impl->queue, m_impl->bufferFrames * kAudioChannels * sizeof(float), &buffer);
-    Impl::refill(m_impl.get(), m_impl->queue, buffer);
-  }
-  return AudioQueueStart(m_impl->queue, nullptr) == noErr;
+  return m_impl->output.start(kAudioObjectUnknown, m_impl->bufferFrames);
 }
 
 void MacAudioSink::play(const EncodedAudio &packet)

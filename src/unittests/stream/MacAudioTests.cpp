@@ -71,9 +71,18 @@ void MacAudioTests::aacRoundTrip()
   QVERIFY2(std::abs(hz - 1000.0) < 20.0, qPrintable(QStringLiteral("pitch %1 Hz").arg(hz)));
 }
 
+void MacAudioTests::pcmOutputPlaysOnDefaultDevice_data()
+{
+  QTest::addColumn<bool>("byId");
+  // the way the virtual microphone opens its hidden feed device
+  QTest::newRow("by ID") << true;
+  // the way shared sound plays, following the default device
+  QTest::newRow("following the default") << false;
+}
+
 void MacAudioTests::pcmOutputPlaysOnDefaultDevice()
 {
-  // by its ID, the way the virtual microphone opens its hidden feed device
+  QFETCH(bool, byId);
   const AudioObjectPropertyAddress address{
       kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
   };
@@ -91,7 +100,7 @@ void MacAudioTests::pcmOutputPlaysOnDefaultDevice()
   buffer.push(silence.data(), kFrames);
 
   MacPcmOutput output(buffer);
-  QVERIFY(output.start(device, kAudioSampleRate / 200));
+  QVERIFY(output.start(byId ? device : kAudioObjectUnknown, kAudioSampleRate / 200));
   QTRY_COMPARE_WITH_TIMEOUT(buffer.bufferedFrames(), 0u, 2000);
 }
 

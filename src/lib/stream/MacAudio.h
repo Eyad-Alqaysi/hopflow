@@ -88,7 +88,11 @@ public:
   MacPcmOutput(const MacPcmOutput &) = delete;
   MacPcmOutput &operator=(const MacPcmOutput &) = delete;
 
-  //! Play on \p device, an AudioDeviceID, pulling about \p bufferFrames at a time
+  //! Play on \p device, pulling about \p bufferFrames at a time
+  /*!
+  With kAudioObjectUnknown it plays on the default output and moves along
+  when the user picks another one, for example by plugging in headphones.
+  */
   bool start(AudioObjectID device, UInt32 bufferFrames);
 
   struct Impl;
@@ -115,7 +119,7 @@ private:
   std::shared_ptr<Impl> m_impl;
 };
 
-//! Plays shared audio through the default output
+//! Plays shared audio through the default output, following it when it changes
 class MacAudioSink : public IAudioSink
 {
 public:
