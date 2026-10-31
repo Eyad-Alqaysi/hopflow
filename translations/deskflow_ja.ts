@@ -458,6 +458,10 @@ p, li { white-space: pre-wrap; }
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Adding the extended display, which can take a few seconds…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The extended display could not be created: %1</source>
         <translation type="unfinished"></translation>
     </message>
