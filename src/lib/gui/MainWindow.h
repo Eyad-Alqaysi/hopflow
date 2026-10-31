@@ -32,6 +32,7 @@ class QLocalServer;
 class DeskflowApplication;
 class LogDock;
 class DragProbeWindow;
+class ExtendDisplayController;
 class ScreenShareController;
 class StatusBar;
 
@@ -189,6 +190,7 @@ private:
   LogDock *m_logDock;
   DragProbeWindow *m_dragProbe;
   ScreenShareController *m_screenShare = nullptr;
+  ExtendDisplayController *m_extendDisplay = nullptr;
   QStringList m_connectedClients;
   StatusBar *m_statusBar = nullptr;
 

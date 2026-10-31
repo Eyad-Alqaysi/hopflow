@@ -16,6 +16,8 @@ endif()
 add_library(${target} STATIC
   ${platform_sources}
   ComputerSetupModel.cpp
+  ExtendDisplayController.cpp
+  ExtendDisplayController.h
   ScreenShareController.cpp
   ScreenShareController.h
   StreamSupport.cpp

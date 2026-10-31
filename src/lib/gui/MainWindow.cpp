@@ -13,6 +13,7 @@
 #include "Diagnostic.h"
 #include "StyleUtils.h"
 
+#include "ExtendDisplayController.h"
 #include "ScreenShareController.h"
 #include "dialogs/AboutDialog.h"
 #include "dialogs/ClientConfigDialog.h"
@@ -163,6 +164,32 @@ MainWindow::MainWindow()
       this
   );
   connect(m_screenShare, &ScreenShareController::notify, this, [this](const QString &message) {
+    m_trayIcon->showMessage(kAppName, message);
+  });
+
+  m_extendDisplay = new ExtendDisplayController(
+      this,
+      [this] {
+        if (m_coreProcess.mode() == CoreMode::Client) {
+          return QStringList{Settings::value(Settings::Client::RemoteHost).toString()};
+        }
+        return m_connectedClients;
+      },
+      [this] {
+        if (!m_coreProcess.isStarted()) {
+          return false;
+        }
+        stopCore();
+        return true;
+      },
+      [this] {
+        if (!m_coreProcess.isStarted()) {
+          startCore();
+        }
+      },
+      this
+  );
+  connect(m_extendDisplay, &ExtendDisplayController::notify, this, [this](const QString &message) {
     m_trayIcon->showMessage(kAppName, message);
   });
 
@@ -715,6 +742,8 @@ void MainWindow::createMenuBar()
   m_menuFile->addSeparator();
   m_menuFile->addAction(m_screenShare->shareAction());
   m_menuFile->addAction(m_screenShare->stopAction());
+  m_menuFile->addAction(m_extendDisplay->extendAction());
+  m_menuFile->addAction(m_extendDisplay->stopAction());
   m_menuFile->addSeparator();
   m_menuFile->addAction(m_actionQuit);
 
@@ -739,7 +768,8 @@ void MainWindow::setupTrayIcon()
   auto trayMenu = new QMenu(this);
   trayMenu->addActions(
       {m_actionStartCore, m_actionRestartCore, m_actionStopCore, m_screenShare->shareAction(),
-       m_screenShare->stopAction(), m_actionMinimize, m_actionRestore, m_actionTrayQuit}
+       m_screenShare->stopAction(), m_extendDisplay->extendAction(), m_extendDisplay->stopAction(), m_actionMinimize,
+       m_actionRestore, m_actionTrayQuit}
   );
   trayMenu->insertSeparator(m_screenShare->shareAction());
   trayMenu->insertSeparator(m_actionMinimize);
@@ -992,7 +1022,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
   if (m_saveOnExit) {
     Settings::setValue(Settings::Gui::WindowGeometry, geometry());
-    Settings::setValue(Settings::Gui::AutoStartCore, m_coreProcess.isStarted());
+    // sharing paused for an extended display counts as running
+    Settings::setValue(Settings::Gui::AutoStartCore, m_coreProcess.isStarted() || m_extendDisplay->hasPausedSharing());
   }
   qDebug() << "quitting application";
 
