@@ -54,3 +54,11 @@ create_test(
   SOURCE AudioBufferTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
+
+create_test(
+  NAME MicrophoneTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE MicrophoneTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)

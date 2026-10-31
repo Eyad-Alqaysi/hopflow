@@ -9,9 +9,11 @@
 
 #if defined(__APPLE__)
 #include "stream/MacAudio.h"
+#include "stream/MacMicrophone.h"
 #include "stream/MacVideo.h"
 #elif defined(_WIN32)
 #include "stream/WinAudio.h"
+#include "stream/WinMicrophone.h"
 #include "stream/WinVideo.h"
 #endif
 
@@ -61,7 +63,13 @@ std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
 
 std::unique_ptr<IAudioSource> createMicrophoneSource()
 {
+#if defined(__APPLE__)
+  return std::make_unique<MacMicrophoneSource>();
+#elif defined(_WIN32)
+  return std::make_unique<WinMicrophoneSource>();
+#else
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
@@ -71,12 +79,30 @@ std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
 
 std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec)
 {
+#if defined(__APPLE__)
+  if (MacVirtualMicSink::isAvailable()) {
+    return std::make_unique<MacVirtualMicSink>();
+  }
+#elif defined(_WIN32)
+  if (auto device = WinVirtualMicSink::findDevice(); !device.isEmpty()) {
+    return std::make_unique<WinVirtualMicSink>(device);
+  }
+#endif
   return nullptr;
 }
 
 QString virtualMicUnavailableReason()
 {
-  return QStringLiteral("a virtual microphone is not available on this computer yet");
+#if defined(__APPLE__)
+  return QStringLiteral("the virtual microphone driver HopflowMic.driver is not installed: run "
+                        "/Applications/Hopflow.app/Contents/Resources/install-hopflow-mic.sh in Terminal, "
+                        "then choose \"Hopflow Microphone\" in your apps");
+#elif defined(_WIN32)
+  return QStringLiteral("no virtual microphone found: install VB-Audio Virtual Cable from https://vb-audio.com/Cable/, "
+                        "then choose \"CABLE Output\" as the microphone in your apps");
+#else
+  return QStringLiteral("a virtual microphone is not available on this computer");
+#endif
 }
 
 std::unique_ptr<IAudioSink> createAudioSink(AudioCodec, AudioLatency)
