@@ -49,6 +49,7 @@ void StreamReceiver::onFrame(const Frame &frame)
   case FrameType::Hello:
     if (const auto hello = decodeHello(frame.payload)) {
       m_computerName = hello->computerName;
+      m_kind = hello->kind;
       Q_EMIT started(m_computerName);
     }
     break;
@@ -106,11 +107,35 @@ void StreamReceiver::onVideoFrame(const Frame &frame)
   Q_EMIT frameReady(image);
 }
 
+void StreamReceiver::sendDisplayInfo(const DisplayInfo &info)
+{
+  if (m_connection) {
+    m_connection->send(Frame{FrameType::DisplayInfo, 0, encode(info)});
+  }
+}
+
 void StreamReceiver::onAudioConfig(const AudioConfig &config)
 {
-  m_audio = createAudioSink(config.codec);
+  switch (m_kind) {
+  case SessionKind::Microphone:
+    m_audio = createVirtualMicSink(config.codec);
+    if (!m_audio) {
+      Q_EMIT audioUnavailable(virtualMicUnavailableReason());
+      return;
+    }
+    break;
+  case SessionKind::Sound:
+    m_audio = createAudioSink(config.codec, AudioLatency::Low);
+    break;
+  case SessionKind::ScreenShare:
+  case SessionKind::ExtendDisplay:
+    m_audio = createAudioSink(config.codec, AudioLatency::Smooth);
+    break;
+  }
+
   if (m_audio && !m_audio->configure(config)) {
     m_audio.reset();
+    Q_EMIT audioUnavailable(QStringLiteral("this computer cannot play the sound it was sent"));
   }
 }
 

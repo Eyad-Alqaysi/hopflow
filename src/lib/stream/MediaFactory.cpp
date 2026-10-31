@@ -17,8 +17,12 @@
 
 namespace hopflow::stream {
 
-std::unique_ptr<IVideoSource> createScreenVideoSource()
+std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId)
 {
+  if (!displayId.isEmpty()) {
+    // capture of a chosen display is added per platform with the virtual display
+    return nullptr;
+  }
 #if defined(__APPLE__)
   if (MacScreenSource::isAvailable()) {
     return std::make_unique<MacScreenSource>();
@@ -29,7 +33,7 @@ std::unique_ptr<IVideoSource> createScreenVideoSource()
   return nullptr;
 }
 
-std::unique_ptr<IAudioSource> createSystemAudioSource()
+std::unique_ptr<IAudioSource> createSystemAudioSource(bool)
 {
 #if defined(__APPLE__)
   if (MacSystemAudioSource::isAvailable()) {
@@ -55,7 +59,27 @@ std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec)
 #endif
 }
 
-std::unique_ptr<IAudioSink> createAudioSink(AudioCodec)
+std::unique_ptr<IAudioSource> createMicrophoneSource()
+{
+  return nullptr;
+}
+
+std::unique_ptr<IVirtualDisplay> createVirtualDisplay()
+{
+  return nullptr;
+}
+
+std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec)
+{
+  return nullptr;
+}
+
+QString virtualMicUnavailableReason()
+{
+  return QStringLiteral("a virtual microphone is not available on this computer yet");
+}
+
+std::unique_ptr<IAudioSink> createAudioSink(AudioCodec, AudioLatency)
 {
 #if defined(__APPLE__)
   return std::make_unique<MacAudioSink>();

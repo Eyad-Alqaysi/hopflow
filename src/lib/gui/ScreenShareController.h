@@ -7,13 +7,16 @@
 #pragma once
 
 #include "stream/StreamPreset.h"
+#include "stream/StreamProtocol.h"
 
 #include <QObject>
 #include <QPointer>
 #include <QStringList>
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <vector>
 
 class QAction;
 class QWidget;
@@ -26,7 +29,11 @@ class StreamSender;
 class StreamServer;
 } // namespace hopflow::stream
 
-//! Screen sharing in the GUI: showing this screen elsewhere, and viewing others here
+//! Screen sharing in the GUI: showing this screen elsewhere, and receiving every kind of stream here
+/*!
+It owns the listening server, so it also receives extended displays, sound
+and microphones; other controllers only send.
+*/
 class ScreenShareController : public QObject
 {
   Q_OBJECT
@@ -60,7 +67,10 @@ private:
   void stopSharing();
   void updateActions();
   void onViewerConnected(hopflow::stream::StreamConnection *connection);
-  bool askToTrust(const QByteArray &fingerprint, const QString &question);
+  void onSessionStarted(hopflow::stream::StreamReceiver *receiver, const QString &name);
+  void showViewer(hopflow::stream::StreamReceiver *receiver, const QString &name);
+  ScreenViewerWindow *viewerFor(hopflow::stream::SessionKind kind) const;
+  static QString soundName(hopflow::stream::SessionKind kind);
 
   QWidget *m_window;
   std::function<QStringList()> m_targets;
@@ -68,8 +78,11 @@ private:
   QAction *m_stopAction;
   std::unique_ptr<hopflow::stream::StreamServer> m_server;
   std::unique_ptr<hopflow::stream::StreamSender> m_sender;
-  std::unique_ptr<hopflow::stream::StreamReceiver> m_receiver;
+  //! Connected, but the hello saying what they carry has not arrived
+  std::vector<std::unique_ptr<hopflow::stream::StreamReceiver>> m_pending;
+  std::map<hopflow::stream::SessionKind, std::unique_ptr<hopflow::stream::StreamReceiver>> m_receivers;
   QPointer<ScreenViewerWindow> m_viewer;
+  QPointer<ScreenViewerWindow> m_extendViewer;
   QStringList m_hostsToTry;
   hopflow::stream::Preset m_preset;
   bool m_streaming = false;

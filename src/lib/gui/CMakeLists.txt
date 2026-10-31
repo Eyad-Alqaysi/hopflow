@@ -18,6 +18,8 @@ add_library(${target} STATIC
   ComputerSetupModel.cpp
   ScreenShareController.cpp
   ScreenShareController.h
+  StreamSupport.cpp
+  StreamSupport.h
   ComputerSetupModel.h
   Diagnostic.cpp
   Diagnostic.h

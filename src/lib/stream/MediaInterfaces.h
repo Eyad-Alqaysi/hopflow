@@ -82,12 +82,46 @@ public:
   virtual int64_t positionUs() const = 0;
 };
 
-//! @name Factories, implemented per platform
+//! A display that exists only in software, for extending the desktop onto another computer
+/*!
+It stays connected until destroy() or destruction. Its picture is captured
+with createScreenVideoSource(displayId()).
+*/
+class IVirtualDisplay
+{
+public:
+  virtual ~IVirtualDisplay() = default;
+  //! Add the display to the desktop at \p size physical pixels; false with a reason in error()
+  virtual bool create(const DisplayInfo &info) = 0;
+  //! Identifier the screen source understands; empty until created
+  virtual QString displayId() const = 0;
+  virtual void destroy() = 0;
+  virtual QString error() const = 0;
+};
+
+//! How long received audio may wait before it is played
+enum class AudioLatency : uint8_t
+{
+  //! Enough buffer to ride out Wi-Fi jitter, kept in sync with video
+  Smooth,
+  //! As little as the network allows, for sound routing and microphones
+  Low
+};
+
+//! @name Factories, implemented per platform; each returns nullptr where unsupported
 //@{
-std::unique_ptr<IVideoSource> createScreenVideoSource();
-std::unique_ptr<IAudioSource> createSystemAudioSource();
+//! Capture \p displayId, or the main display when empty
+std::unique_ptr<IVideoSource> createScreenVideoSource(const QString &displayId = {});
+//! What this computer plays; with \p muteLocal its own speakers go quiet while captured
+std::unique_ptr<IAudioSource> createSystemAudioSource(bool muteLocal = false);
+std::unique_ptr<IAudioSource> createMicrophoneSource();
+std::unique_ptr<IVirtualDisplay> createVirtualDisplay();
 std::unique_ptr<IVideoDecoder> createVideoDecoder(VideoCodec codec);
-std::unique_ptr<IAudioSink> createAudioSink(AudioCodec codec);
+std::unique_ptr<IAudioSink> createAudioSink(AudioCodec codec, AudioLatency latency = AudioLatency::Smooth);
+//! Plays into a virtual microphone other apps can record from
+std::unique_ptr<IAudioSink> createVirtualMicSink(AudioCodec codec);
+//! Why createVirtualMicSink() returned nullptr, such as a driver that is not installed
+QString virtualMicUnavailableReason();
 //@}
 
 } // namespace hopflow::stream
