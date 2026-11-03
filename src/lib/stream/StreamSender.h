@@ -28,13 +28,21 @@ public:
   StreamSender(QString computerName, QStringList trustedDatabases, QString approvedDatabase, QObject *parent = nullptr);
   ~StreamSender() override;
 
-  //! Connect to \p host and stream; audio is optional
+  //! Connect to \p host and stream
+  /*!
+  \p video may be null for a sound or microphone session, and for an
+  extended display, whose video is given to startVideo() once the viewer has
+  sent displayInfoReceived(). \p audio is optional.
+  */
   void start(
       const QString &host, quint16 port, const QSslConfiguration &tls, const Preset &preset,
       std::unique_ptr<IVideoSource> video, std::unique_ptr<IAudioSource> audio
   );
   void stop();
   bool isActive() const;
+
+  //! Start or replace the video of a connected session
+  void startVideo(std::unique_ptr<IVideoSource> video);
 
   //! Answer an approvalNeeded() question about the viewer
   void resolveApproval(bool accept);
@@ -46,6 +54,8 @@ Q_SIGNALS:
   void streaming(const QString &viewer);
   void stopped(const QString &reason);
   void approvalNeeded(const QByteArray &fingerprint, const QString &address);
+  //! The viewer described the monitor an extended display should match
+  void displayInfoReceived(const hopflow::stream::DisplayInfo &info);
 
 private:
   void onConnected(StreamConnection *connection);
@@ -54,6 +64,7 @@ private:
   void onAudioConfig(const AudioConfig &config);
   void onAudioPacket(const EncodedAudio &packet);
   void onFrame(const Frame &frame);
+  void startAudio();
   void finish(const QString &reason);
 
   QString m_computerName;

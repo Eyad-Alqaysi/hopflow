@@ -235,6 +235,8 @@ namespace hopflow::stream {
 struct MacScreenSource::Impl
 {
   std::shared_ptr<EncoderState> state = std::make_shared<EncoderState>();
+  //! kCGNullDirectDisplay for the main display
+  CGDirectDisplayID displayId = kCGNullDirectDisplay;
   dispatch_queue_t queue = dispatch_queue_create("io.github.eyad_alqaysi.hopflow.capture", DISPATCH_QUEUE_SERIAL);
   // only touched on the capture queue
   id stream = nil;
@@ -362,10 +364,58 @@ void startCapture(const std::shared_ptr<MacScreenSource::Impl> &impl, SCDisplay 
   }];
 }
 
+//! Find the display to capture and start capturing it
+/*!
+A display that was just added can take a moment to reach ScreenCaptureKit,
+so a missing one is looked for again \p attemptsLeft more times.
+*/
+API_AVAILABLE(macos(12.3))
+void findDisplayAndCapture(std::shared_ptr<MacScreenSource::Impl> impl, Preset preset, int attemptsLeft)
+{
+  // the first call asks the user for Screen Recording permission
+  [SCShareableContent
+      getShareableContentExcludingDesktopWindows:NO
+                             onScreenWindowsOnly:YES
+                               completionHandler:^(SCShareableContent *content, NSError *error) {
+                                 if (error != nil || content.displays.count == 0) {
+                                   impl->state->fail(QStringLiteral(
+                                       "allow Hopflow under System Settings > Privacy & Security > Screen "
+                                       "Recording, then share again"
+                                   ));
+                                   return;
+                                 }
+
+                                 const auto wanted =
+                                     impl->displayId != kCGNullDirectDisplay ? impl->displayId : CGMainDisplayID();
+                                 SCDisplay *display = nil;
+                                 for (SCDisplay *candidate in content.displays) {
+                                   if (candidate.displayID == wanted) {
+                                     display = candidate;
+                                   }
+                                 }
+                                 if (display == nil && impl->displayId == kCGNullDirectDisplay) {
+                                   display = content.displays.firstObject;
+                                 }
+
+                                 if (display != nil) {
+                                   dispatch_async(impl->queue, ^{
+                                     startCapture(impl, display, preset);
+                                   });
+                                 } else if (attemptsLeft > 0 && isRunning(*impl->state)) {
+                                   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), impl->queue, ^{
+                                     findDisplayAndCapture(impl, preset, attemptsLeft - 1);
+                                   });
+                                 } else {
+                                   impl->state->fail(QStringLiteral("display %1 cannot be captured").arg(wanted));
+                                 }
+                               }];
+}
+
 } // namespace
 
-MacScreenSource::MacScreenSource() : m_impl(std::make_shared<Impl>())
+MacScreenSource::MacScreenSource(uint32_t displayId) : m_impl(std::make_shared<Impl>())
 {
+  m_impl->displayId = displayId;
 }
 
 MacScreenSource::~MacScreenSource()
@@ -393,29 +443,8 @@ void MacScreenSource::start(const Preset &preset, ConfigReady onConfig, FrameRea
       impl->state->running = true;
     }
 
-    // the first call asks the user for Screen Recording permission
-    [SCShareableContent
-        getShareableContentExcludingDesktopWindows:NO
-                               onScreenWindowsOnly:YES
-                                 completionHandler:^(SCShareableContent *content, NSError *error) {
-                                   if (error != nil || content.displays.count == 0) {
-                                     impl->state->fail(QStringLiteral(
-                                         "allow Hopflow under System Settings > Privacy & Security > Screen "
-                                         "Recording, then share again"
-                                     ));
-                                     return;
-                                   }
-
-                                   SCDisplay *display = content.displays.firstObject;
-                                   for (SCDisplay *candidate in content.displays) {
-                                     if (candidate.displayID == CGMainDisplayID()) {
-                                       display = candidate;
-                                     }
-                                   }
-                                   dispatch_async(impl->queue, ^{
-                                     startCapture(impl, display, preset);
-                                   });
-                                 }];
+    // about two seconds for a display that was just added
+    findDisplayAndCapture(impl, preset, 8);
   } else {
     onFailed(QStringLiteral("sharing this screen needs macOS 12.3 or later"));
   }

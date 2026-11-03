@@ -7,9 +7,14 @@
 #include "stream/WinAudio.h"
 
 #include "stream/AudioBuffer.h"
+#include "stream/MutedSpeakers.h"
+#include "stream/WinAudioDevice.h"
 #include "stream/WinMedia.h"
 
+#include <QDebug>
+
 #include <audioclient.h>
+#include <endpointvolume.h>
 #include <ksmedia.h>
 #include <mferror.h>
 #include <mmdeviceapi.h>
@@ -17,9 +22,9 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -48,18 +53,141 @@ WAVEFORMATEXTENSIBLE floatFormat()
   return format;
 }
 
-ComPtr<IAudioClient> defaultAudioClient()
+//! Unmute the output devices a crashed run left muted
+void unmuteLeftovers()
 {
-  ComPtr<IMMDeviceEnumerator> enumerator;
+  MutedSpeakers record;
+  const auto devices = record.devices();
+  if (devices.isEmpty()) {
+    return;
+  }
+  auto enumerator = deviceEnumerator();
+  if (!enumerator) {
+    return;
+  }
+  for (const auto &id : devices) {
+    const auto wideId = id.toStdWString();
+    ComPtr<IMMDevice> device;
+    ComPtr<IAudioEndpointVolume> volume;
+    // a device that cannot be reached now keeps its record, to be unmuted another time
+    if (FAILED(enumerator->GetDevice(wideId.c_str(), &device)) ||
+        FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &volume)) ||
+        FAILED(volume->SetMute(FALSE, nullptr))) {
+      continue;
+    }
+    record.remove(id);
+    qInfo().noquote() << "unmuted a sound output Hopflow had muted before it stopped unexpectedly";
+  }
+}
+
+//! Mutes an output while it exists, then unmutes it unless it was muted already
+/*!
+The output is noted in MutedSpeakers before it is muted, so that if Hopflow
+crashes unmuteLeftovers() unmutes it the next time.
+*/
+class EndpointMute
+{
+public:
+  explicit EndpointMute(IMMDevice *device) : m_id(endpointId(device))
+  {
+    BOOL wasMuted = FALSE;
+    if (m_id.isEmpty() || FAILED(device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, &m_volume)) ||
+        FAILED(m_volume->GetMute(&wasMuted))) {
+      m_volume.Reset();
+      return;
+    }
+    // already quiet, so there is nothing to do or undo
+    if (wasMuted != FALSE) {
+      return;
+    }
+    if (!MutedSpeakers().add(m_id)) {
+      qWarning().noquote() << "cannot note that the sound output is muted, so it is left as it is";
+      m_volume.Reset();
+      return;
+    }
+    if (FAILED(m_volume->SetMute(TRUE, nullptr))) {
+      MutedSpeakers().remove(m_id);
+      m_volume.Reset();
+      return;
+    }
+    m_muted = true;
+  }
+
+  ~EndpointMute()
+  {
+    if (!m_muted) {
+      return;
+    }
+    if (const HRESULT hr = m_volume->SetMute(FALSE, nullptr); FAILED(hr)) {
+      // the record stays, so the output is unmuted the next time Hopflow can reach it
+      qWarning().noquote() << hresultText("unmuting the sound output", hr);
+      return;
+    }
+    MutedSpeakers().remove(m_id);
+  }
+
+  EndpointMute(const EndpointMute &) = delete;
+  EndpointMute &operator=(const EndpointMute &) = delete;
+
+  bool isActive() const
+  {
+    return m_volume != nullptr;
+  }
+
+  const QString &deviceId() const
+  {
+    return m_id;
+  }
+
+private:
+  QString m_id;
+  ComPtr<IAudioEndpointVolume> m_volume;
+  //! Hopflow muted the output, so it unmutes it
+  bool m_muted = false;
+};
+
+//! Event driven loopback capture of the default output, converted by Windows to 48 kHz stereo floats
+/*!
+Windows 10 1703 and later signal loopback streams each device period.
+*/
+struct Loopback
+{
   ComPtr<IMMDevice> device;
   ComPtr<IAudioClient> client;
-  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
-      FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device)) ||
-      FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client))) {
-    return nullptr;
+  ComPtr<IAudioCaptureClient> capture;
+  HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  bool started = false;
+
+  Loopback() = default;
+  Loopback(const Loopback &) = delete;
+  Loopback &operator=(const Loopback &) = delete;
+
+  ~Loopback()
+  {
+    if (started) {
+      client->Stop();
+    }
+    if (ready != nullptr) {
+      CloseHandle(ready);
+    }
   }
-  return client;
-}
+
+  bool start(IMMDeviceEnumerator *enumerator)
+  {
+    auto format = floatFormat();
+    device = defaultDevice(enumerator, DefaultDevice::Output);
+    started = device && SUCCEEDED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client)) &&
+              SUCCEEDED(client->Initialize(
+                  AUDCLNT_SHAREMODE_SHARED,
+                  AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                      AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                  kHundredNsPerSecond / 5, 0, &format.Format, nullptr
+              )) &&
+              SUCCEEDED(client->SetEventHandle(ready)) && SUCCEEDED(client->GetService(IID_PPV_ARGS(&capture))) &&
+              SUCCEEDED(client->Start());
+    return started;
+  }
+};
 
 ComPtr<IMFMediaType> audioType(const GUID &subtype, UINT32 bitsPerSample)
 {
@@ -84,6 +212,31 @@ QByteArray aacUserData(const QByteArray &audioSpecificConfig)
   return data;
 }
 
+//! Microsoft's AAC encoder taking 16-bit PCM, or null with \p error set
+ComPtr<IMFTransform> aacEncoder(QString &error)
+{
+  ComPtr<IMFTransform> encoder;
+  if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&encoder)))) {
+    error = QStringLiteral("cannot start the sound encoder");
+    return nullptr;
+  }
+  auto pcmType = audioType(MFAudioFormat_PCM, 16);
+  pcmType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * 2);
+  pcmType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioSampleRate * kAudioChannels * 2);
+  auto aacType = audioType(MFAudioFormat_AAC, 16);
+  aacType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAacBitrate / 8);
+  aacType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
+  // Windows versions differ on which type the encoder wants first
+  const bool inputFirst =
+      SUCCEEDED(encoder->SetInputType(0, pcmType.Get(), 0)) && SUCCEEDED(encoder->SetOutputType(0, aacType.Get(), 0));
+  if (!inputFirst &&
+      (FAILED(encoder->SetOutputType(0, aacType.Get(), 0)) || FAILED(encoder->SetInputType(0, pcmType.Get(), 0)))) {
+    error = QStringLiteral("the sound encoder rejected the format");
+    return nullptr;
+  }
+  return encoder;
+}
+
 } // namespace
 
 //
@@ -92,6 +245,12 @@ QByteArray aacUserData(const QByteArray &audioSpecificConfig)
 
 struct WinSystemAudioSource::Impl
 {
+  Impl(AudioCodec codec, bool muteLocal) : codec(codec), muteLocal(muteLocal)
+  {
+  }
+
+  const AudioCodec codec;
+  const bool muteLocal;
   std::thread worker;
   std::atomic<bool> running{false};
   std::mutex callbackMutex;
@@ -113,75 +272,111 @@ void WinSystemAudioSource::Impl::run()
 {
   MediaFoundationScope mediaFoundation;
 
-  // AAC encoder: 16-bit PCM in, raw AAC packets out
+  // AAC encoder: 16-bit PCM in, raw AAC packets out; low latency sound is sent as it is
   ComPtr<IMFTransform> encoder;
-  if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&encoder)))) {
-    fail(QStringLiteral("cannot start the sound encoder"));
-    return;
+  DWORD outputSize = 0;
+  bool providesSamples = false;
+  if (codec == AudioCodec::Aac) {
+    QString error;
+    encoder = aacEncoder(error);
+    if (!encoder) {
+      fail(error);
+      return;
+    }
+    MFT_OUTPUT_STREAM_INFO info{};
+    encoder->GetOutputStreamInfo(0, &info);
+    outputSize = std::max<DWORD>(info.cbSize, 4096);
+    providesSamples = (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) != 0;
+    encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
   }
-  auto pcmType = audioType(MFAudioFormat_PCM, 16);
-  pcmType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * 2);
-  pcmType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioSampleRate * kAudioChannels * 2);
-  auto aacType = audioType(MFAudioFormat_AAC, 16);
-  aacType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAacBitrate / 8);
-  aacType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
-  // Windows versions differ on which type the encoder wants first
-  const bool inputFirst =
-      SUCCEEDED(encoder->SetInputType(0, pcmType.Get(), 0)) && SUCCEEDED(encoder->SetOutputType(0, aacType.Get(), 0));
-  if (!inputFirst &&
-      (FAILED(encoder->SetOutputType(0, aacType.Get(), 0)) || FAILED(encoder->SetInputType(0, pcmType.Get(), 0)))) {
-    fail(QStringLiteral("the sound encoder rejected the format"));
-    return;
-  }
-  MFT_OUTPUT_STREAM_INFO info{};
-  encoder->GetOutputStreamInfo(0, &info);
-  const DWORD outputSize = std::max<DWORD>(info.cbSize, 4096);
-  const bool providesSamples = (info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES) != 0;
-  encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
 
-  // loopback capture of the default output, converted by Windows to 48 kHz stereo floats
-  auto client = defaultAudioClient();
-  auto format = floatFormat();
-  ComPtr<IAudioCaptureClient> capture;
-  if (!client ||
-      FAILED(client->Initialize(
-          AUDCLNT_SHAREMODE_SHARED,
-          AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          kHundredNsPerSecond / 5, 0, &format.Format, nullptr
-      )) ||
-      FAILED(client->GetService(IID_PPV_ARGS(&capture))) || FAILED(client->Start())) {
+  auto enumerator = deviceEnumerator();
+  if (!enumerator) {
     fail(QStringLiteral("cannot capture the sound playing on this PC"));
     return;
   }
+  if (muteLocal) {
+    unmuteLeftovers();
+  }
+
+  // capture follows the default output when the user picks another one or it goes away; both
+  // the loopback and the mute are put back when this returns
+  DefaultDeviceWatch watch(enumerator.Get(), DefaultDevice::Output);
+  std::optional<Loopback> loopback;
+  std::optional<EndpointMute> mute;
+  bool restart = true;
 
   int64_t capturedFrames = 0;
-  std::vector<int16_t> pcm;
+  Pcm16Packetizer packetizer;
+  std::vector<float> captured;
   while (running) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (restart) {
+      restart = false;
+      loopback.reset();
+      loopback.emplace();
+      if (!loopback->start(enumerator.Get())) {
+        fail(QStringLiteral("cannot capture the sound playing on this PC"));
+        break;
+      }
+      // the speakers go quiet, but loopback still hears the mix; a new output is muted in place of the old
+      if (muteLocal && (!mute || mute->deviceId() != endpointId(loopback->device.Get()))) {
+        mute.reset();
+        mute.emplace(loopback->device.Get());
+        if (!mute->isActive()) {
+          qWarning().noquote() << "cannot mute this PC while sending its sound";
+        }
+      }
+    }
 
-    pcm.clear();
+    // nothing is signalled while nothing plays
+    const auto wake = waitForAudio(loopback->ready, watch, 200);
+    if (wake == AudioWake::DefaultChanged) {
+      restart = true;
+      continue;
+    }
+    if (wake != AudioWake::Ready) {
+      continue;
+    }
+
+    captured.clear();
     UINT32 packetFrames = 0;
-    while (SUCCEEDED(capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
+    HRESULT hr = S_OK;
+    while (SUCCEEDED(hr = loopback->capture->GetNextPacketSize(&packetFrames)) && packetFrames > 0) {
       BYTE *data = nullptr;
       UINT32 frames = 0;
       DWORD flags = 0;
-      if (FAILED(capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
+      if (FAILED(hr = loopback->capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) {
         break;
       }
       const auto *samples = reinterpret_cast<const float *>(data);
       for (size_t i = 0; i < size_t(frames) * kAudioChannels; ++i) {
-        const float value = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 ? 0.0f : samples[i];
-        pcm.push_back(int16_t(std::clamp(value, -1.0f, 1.0f) * 32767.0f));
+        captured.push_back((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 ? 0.0f : samples[i]);
       }
-      capture->ReleaseBuffer(frames);
+      loopback->capture->ReleaseBuffer(frames);
     }
-    if (pcm.empty()) {
+    // the output was unplugged or reconfigured: carry on with whichever is the default now
+    if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+      restart = true;
+      continue;
+    }
+    if (captured.empty()) {
       continue;
     }
 
-    const QByteArray bytes(reinterpret_cast<const char *>(pcm.data()), qsizetype(pcm.size() * sizeof(int16_t)));
+    if (codec == AudioCodec::Pcm16) {
+      const auto packets = packetizer.pack(captured.data(), uint32_t(captured.size() / kAudioChannels));
+      std::scoped_lock lock(callbackMutex);
+      if (running) {
+        for (const auto &packet : packets) {
+          onPacket(packet);
+        }
+      }
+      continue;
+    }
+
+    const auto bytes = floatToPcm16(captured.data(), captured.size());
     const auto timestamp = capturedFrames * 1'000'000 / kAudioSampleRate;
-    capturedFrames += int64_t(pcm.size() / kAudioChannels);
+    capturedFrames += int64_t(captured.size() / kAudioChannels);
     auto sample = sampleWithBytes(bytes, timestamp);
     if (!sample || FAILED(encoder->ProcessInput(0, sample.Get(), 0))) {
       continue;
@@ -201,11 +396,20 @@ void WinSystemAudioSource::Impl::run()
         [] { return false; }
     );
   }
-  client->Stop();
 }
 
-WinSystemAudioSource::WinSystemAudioSource() : m_impl(std::make_unique<Impl>())
+WinSystemAudioSource::WinSystemAudioSource(AudioCodec codec, bool muteLocal)
+    : m_impl(std::make_unique<Impl>(codec, muteLocal))
 {
+}
+
+void WinSystemAudioSource::restoreMutedSpeakers()
+{
+  // on a thread of its own, so COM starts there as the audio code expects, whatever the caller's thread uses
+  std::thread([] {
+    MediaFoundationScope com;
+    unmuteLeftovers();
+  }).join();
 }
 
 WinSystemAudioSource::~WinSystemAudioSource()
@@ -219,11 +423,7 @@ void WinSystemAudioSource::start(ConfigReady onConfig, PacketReady onPacket, Fai
   m_impl->onPacket = std::move(onPacket);
   m_impl->onFailed = std::move(onFailed);
   m_impl->running = true;
-  onConfig(
-      AudioConfig{
-          AudioCodec::Aac, kAudioSampleRate, kAudioChannels, aacAudioSpecificConfig(kAudioSampleRate, kAudioChannels)
-      }
-  );
+  onConfig(audioConfigFor(m_impl->codec));
   m_impl->worker = std::thread([impl = m_impl.get()] { impl->run(); });
 }
 
@@ -244,8 +444,15 @@ void WinSystemAudioSource::stop()
 
 struct WinAudioSink::Impl
 {
-  // start once 50 ms are buffered, never let more than 250 ms build up
-  PcmJitterBuffer buffer{kAudioChannels, kAudioSampleRate / 20, kAudioSampleRate / 4};
+  explicit Impl(AudioLatency latency)
+      : buffer(kAudioChannels, jitterDepth(latency)),
+        deviceBuffer(latency == AudioLatency::Low ? kHundredNsPerSecond / 50 : kHundredNsPerSecond / 20)
+  {
+  }
+
+  PcmJitterBuffer buffer;
+  //! How far ahead the sound card is fed
+  const REFERENCE_TIME deviceBuffer;
   std::unique_ptr<MediaFoundationScope> mediaFoundation;
   ComPtr<IMFTransform> decoder;
   DWORD outputSize = 0;
@@ -286,41 +493,58 @@ struct WinAudioSink::Impl
 
   void pushPcm16(const QByteArray &bytes)
   {
-    const auto *pcm16 = reinterpret_cast<const int16_t *>(bytes.constData());
-    std::vector<float> samples(size_t(bytes.size()) / sizeof(int16_t));
-    for (size_t i = 0; i < samples.size(); ++i) {
-      samples[i] = float(pcm16[i]) / 32768.0f;
-    }
+    const auto samples = pcm16ToFloat(bytes);
     buffer.push(samples.data(), uint32_t(samples.size() / kAudioChannels));
   }
 
   void render()
   {
     MediaFoundationScope com;
-    auto client = defaultAudioClient();
+    auto enumerator = deviceEnumerator();
+    if (!enumerator) {
+      return;
+    }
+    DefaultDeviceWatch watch(enumerator.Get(), DefaultDevice::Output);
+    while (running && renderOnDefault(enumerator.Get(), watch)) {
+    }
+  }
+
+  //! Play on the default output until stopped, false, or until another output is to be used, true
+  bool renderOnDefault(IMMDeviceEnumerator *enumerator, const DefaultDeviceWatch &watch)
+  {
+    auto device = defaultDevice(enumerator, DefaultDevice::Output);
+    ComPtr<IAudioClient> client;
     auto format = floatFormat();
     HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     ComPtr<IAudioRenderClient> output;
     UINT32 bufferFrames = 0;
-    if (!client ||
+    if (!device || FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client)) ||
         FAILED(client->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                 AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-            kHundredNsPerSecond / 20, 0, &format.Format, nullptr
+            deviceBuffer, 0, &format.Format, nullptr
         )) ||
         FAILED(client->SetEventHandle(ready)) || FAILED(client->GetService(IID_PPV_ARGS(&output))) ||
         FAILED(client->GetBufferSize(&bufferFrames)) || FAILED(client->Start())) {
       CloseHandle(ready);
-      return;
+      return false;
     }
 
+    bool follow = false;
     while (running) {
-      if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+      const auto wake = waitForAudio(ready, watch, 200);
+      if (wake == AudioWake::DefaultChanged) {
+        follow = true;
+        break;
+      }
+      if (wake != AudioWake::Ready) {
         continue;
       }
       UINT32 padding = 0;
-      if (FAILED(client->GetCurrentPadding(&padding))) {
+      if (const HRESULT hr = client->GetCurrentPadding(&padding); FAILED(hr)) {
+        // unplugged or reconfigured: carry on with whichever output is the default now
+        follow = hr == AUDCLNT_E_DEVICE_INVALIDATED;
         break;
       }
       const UINT32 frames = bufferFrames - padding;
@@ -333,10 +557,11 @@ struct WinAudioSink::Impl
     }
     client->Stop();
     CloseHandle(ready);
+    return follow;
   }
 };
 
-WinAudioSink::WinAudioSink() : m_impl(std::make_unique<Impl>())
+WinAudioSink::WinAudioSink(AudioLatency latency) : m_impl(std::make_unique<Impl>(latency))
 {
   m_impl->mediaFoundation = std::make_unique<MediaFoundationScope>();
 }

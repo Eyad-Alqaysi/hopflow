@@ -6,40 +6,26 @@
 
 #include "ScreenShareController.h"
 
-#include "TlsUtility.h"
+#include "StreamSupport.h"
 #include "common/Settings.h"
 #include "dialogs/ShareScreenDialog.h"
-#include "net/SecureUtils.h"
 #include "stream/StreamPeers.h"
 #include "stream/StreamReceiver.h"
 #include "stream/StreamSender.h"
 #include "stream/TestPattern.h"
 #include "widgets/ScreenViewerWindow.h"
 
-#include <QAbstractButton>
 #include <QAction>
+#include <QCursor>
 #include <QGuiApplication>
 #include <QMessageBox>
 #include <QScreen>
 #include <QSslSocket>
 
 using namespace hopflow::stream;
+using namespace hopflow::gui;
 
 namespace {
-
-std::optional<QSslConfiguration> localTls()
-{
-  using namespace deskflow::gui;
-  if (!TlsUtility::isCertValid() && !TlsUtility::generateCertificate()) {
-    return std::nullopt;
-  }
-  return tlsConfiguration(Settings::value(Settings::Security::Certificate).toString());
-}
-
-quint16 streamPort()
-{
-  return static_cast<quint16>(Settings::value(Settings::Stream::Port).toUInt());
-}
 
 std::unique_ptr<IVideoSource> videoSource()
 {
@@ -66,12 +52,7 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
       m_shareAction(new QAction(tr("Share Screen…"), this)),
       m_stopAction(new QAction(tr("Stop Sharing Screen"), this)),
       m_server(std::make_unique<StreamServer>(trustedDatabases(), Settings::tlsTrustedScreensDb())),
-      m_sender(
-          std::make_unique<StreamSender>(
-              Settings::value(Settings::Core::ComputerName).toString(), trustedDatabases(),
-              Settings::tlsTrustedScreensDb()
-          )
-      )
+      m_sender(makeSender())
 {
   connect(m_shareAction, &QAction::triggered, this, &ScreenShareController::chooseAndShare);
   connect(m_stopAction, &QAction::triggered, this, &ScreenShareController::stopSharing);
@@ -84,8 +65,8 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
   connect(
       m_server.get(), &StreamServer::approvalNeeded, this,
       [this](const QByteArray &fingerprint, const QString &from) {
-        const auto question = tr("A computer at %1 wants to show its screen here.").arg(from);
-        m_server->gate()->resolve(askToTrust(fingerprint, question));
+        const auto question = tr("A computer at %1 wants to send its screen or sound here.").arg(from);
+        m_server->gate()->resolve(askToTrust(m_window, fingerprint, question));
       }
   );
 
@@ -123,7 +104,7 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
       m_sender.get(), &StreamSender::approvalNeeded, this,
       [this](const QByteArray &fingerprint, const QString &to) {
         const auto question = tr("The computer at %1 has not been paired with this one.").arg(to);
-        m_sender->resolveApproval(askToTrust(fingerprint, question));
+        m_sender->resolveApproval(askToTrust(m_window, fingerprint, question));
       }
   );
 
@@ -133,9 +114,11 @@ ScreenShareController::ScreenShareController(QWidget *window, std::function<QStr
 
 ScreenShareController::~ScreenShareController()
 {
-  if (m_viewer) {
-    m_viewer->disconnect(this);
-    delete m_viewer;
+  for (const auto &viewer : {m_viewer, m_extendViewer}) {
+    if (viewer) {
+      viewer->disconnect(this);
+      delete viewer;
+    }
   }
 }
 
@@ -172,12 +155,7 @@ void ScreenShareController::chooseAndShare()
 void ScreenShareController::share(const QString &target, const Preset &preset)
 {
   // a list of addresses is tried in order, like the server addresses of a client
-  m_hostsToTry.clear();
-  for (const auto &host : target.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-    if (const auto trimmed = host.trimmed(); !trimmed.isEmpty()) {
-      m_hostsToTry.append(trimmed);
-    }
-  }
+  m_hostsToTry = splitHosts(target);
   m_preset = preset;
   m_streaming = false;
   tryNextHost();
@@ -225,53 +203,123 @@ void ScreenShareController::updateActions()
 
 void ScreenShareController::onViewerConnected(StreamConnection *connection)
 {
-  // one screen at a time; the newest replaces the old one
-  if (m_receiver) {
-    m_receiver->stop();
-    m_receiver.reset();
-  }
+  // what it carries is only known from its hello
+  qInfo().noquote() << "stream connected from" << connection->peerAddress();
+  auto receiver = std::make_unique<StreamReceiver>(connection);
+  auto *raw = receiver.get();
+  m_pending.push_back(std::move(receiver));
 
-  qInfo().noquote() << "showing a screen shared from" << connection->peerAddress();
-  m_receiver = std::make_unique<StreamReceiver>(connection);
-  connect(m_receiver.get(), &StreamReceiver::started, this, [this](const QString &name) {
-    if (!m_viewer) {
-      m_viewer = new ScreenViewerWindow(name);
-      m_viewer->setAttribute(Qt::WA_DeleteOnClose);
-      connect(m_viewer, &ScreenViewerWindow::closed, this, [this] {
-        if (m_receiver) {
-          m_receiver->stop();
-        }
-      });
-    }
-    m_viewer->show();
-    m_viewer->raise();
-  });
-  connect(m_receiver.get(), &StreamReceiver::frameReady, this, [this](const QImage &image) {
-    if (m_viewer) {
-      m_viewer->showFrame(image);
+  connect(raw, &StreamReceiver::started, this, [this, raw](const QString &name) { onSessionStarted(raw, name); });
+  connect(raw, &StreamReceiver::stopped, this, [this, raw](const QString &reason) {
+    // one that closed before its hello is dropped once its signal has returned
+    QMetaObject::invokeMethod(
+        this, [this, raw] { std::erase_if(m_pending, [raw](const auto &pending) { return pending.get() == raw; }); },
+        Qt::QueuedConnection
+    );
+
+    const auto kind = raw->kind();
+    qInfo().noquote() << "stream from" << raw->computerName() << "stopped:" << reason;
+    if (auto *viewer = viewerFor(kind)) {
+      viewer->showMessage(tr("Sharing stopped: %1").arg(reason));
+    } else if (kind == SessionKind::Sound || kind == SessionKind::Microphone) {
+      Q_EMIT notify(tr("%1 stopped sending its %2").arg(raw->computerName(), soundName(kind)));
     }
   });
-  connect(m_receiver.get(), &StreamReceiver::stopped, this, [this](const QString &reason) {
-    qInfo().noquote() << "shared screen stopped:" << reason;
-    if (m_viewer) {
-      m_viewer->showMessage(tr("Sharing stopped: %1").arg(reason));
-    }
+  connect(raw, &StreamReceiver::audioUnavailable, this, [this, raw](const QString &reason) {
+    auto *box = new QMessageBox(
+        QMessageBox::Warning, tr("Sound"),
+        tr("The %1 from %2 cannot be played: %3").arg(soundName(raw->kind()), raw->computerName(), reason),
+        QMessageBox::Ok, m_window
+    );
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->open();
   });
 }
 
-bool ScreenShareController::askToTrust(const QByteArray &fingerprint, const QString &question)
+void ScreenShareController::onSessionStarted(StreamReceiver *receiver, const QString &name)
 {
-  QMessageBox box(m_window);
-  box.setIcon(QMessageBox::Question);
-  box.setWindowTitle(tr("Screen Sharing"));
-  box.setText(question);
-  box.setInformativeText(
-      tr("Only allow it if this fingerprint matches the one shown in %1 on that computer:\n\n%2")
-          .arg(QGuiApplication::applicationDisplayName(), deskflow::formatSSLFingerprintColumns(fingerprint))
-  );
-  box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-  box.setDefaultButton(QMessageBox::No);
-  box.button(QMessageBox::Yes)->setText(tr("Allow"));
-  box.button(QMessageBox::No)->setText(tr("Don't Allow"));
-  return box.exec() == QMessageBox::Yes;
+  const auto it = std::find_if(m_pending.begin(), m_pending.end(), [receiver](const auto &pending) {
+    return pending.get() == receiver;
+  });
+  if (it == m_pending.end()) {
+    return;
+  }
+
+  // one session of each kind at a time; the newest replaces the old one
+  const auto kind = receiver->kind();
+  auto &slot = m_receivers[kind];
+  if (slot) {
+    slot->disconnect(this);
+    slot->stop();
+  }
+  slot = std::move(*it);
+  m_pending.erase(it);
+
+  switch (kind) {
+  case SessionKind::ScreenShare:
+  case SessionKind::ExtendDisplay:
+    showViewer(receiver, name);
+    break;
+  case SessionKind::Sound:
+  case SessionKind::Microphone:
+    Q_EMIT notify(tr("Playing the %1 of %2").arg(soundName(kind), name));
+    break;
+  }
+}
+
+void ScreenShareController::showViewer(StreamReceiver *receiver, const QString &name)
+{
+  const auto kind = receiver->kind();
+  auto &viewer = kind == SessionKind::ExtendDisplay ? m_extendViewer : m_viewer;
+  if (!viewer) {
+    viewer = new ScreenViewerWindow(
+        name, kind == SessionKind::ExtendDisplay ? ScreenViewerWindow::Mode::ExtendedDisplay
+                                                 : ScreenViewerWindow::Mode::SharedScreen
+    );
+    viewer->setAttribute(Qt::WA_DeleteOnClose);
+    connect(viewer, &ScreenViewerWindow::closed, this, [this, kind] {
+      if (const auto &slot = m_receivers[kind]) {
+        slot->stop();
+      }
+    });
+  }
+  connect(receiver, &StreamReceiver::frameReady, viewer, &ScreenViewerWindow::showFrame);
+
+  if (kind == SessionKind::ExtendDisplay) {
+    // the sender makes a display matching this monitor, so it fills it without scaling
+    auto *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen) {
+      screen = QGuiApplication::primaryScreen();
+    }
+    const auto ratio = screen->devicePixelRatio();
+    receiver->sendDisplayInfo(
+        DisplayInfo{
+            static_cast<uint16_t>(qRound(screen->size().width() * ratio)),
+            static_cast<uint16_t>(qRound(screen->size().height() * ratio)),
+            static_cast<uint16_t>(qRound(screen->refreshRate())), static_cast<uint16_t>(qRound(ratio * 100))
+        }
+    );
+    viewer->setScreen(screen);
+    viewer->showFullScreen();
+  } else {
+    viewer->show();
+  }
+  viewer->raise();
+}
+
+ScreenViewerWindow *ScreenShareController::viewerFor(SessionKind kind) const
+{
+  switch (kind) {
+  case SessionKind::ScreenShare:
+    return m_viewer;
+  case SessionKind::ExtendDisplay:
+    return m_extendViewer;
+  default:
+    return nullptr;
+  }
+}
+
+QString ScreenShareController::soundName(SessionKind kind)
+{
+  return kind == SessionKind::Microphone ? tr("microphone") : tr("sound");
 }

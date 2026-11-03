@@ -130,9 +130,17 @@ public:
   {
     inline static const auto AllowViewing = QStringLiteral("stream/allowViewing");
     inline static const auto Audio = QStringLiteral("stream/audio");
+    //! Last computer an extended display was sent to
+    inline static const auto ExtendTarget = QStringLiteral("stream/extendTarget");
     inline static const auto FrameRate = QStringLiteral("stream/frameRate");
     inline static const auto Port = QStringLiteral("stream/port");
     inline static const auto Resolution = QStringLiteral("stream/resolution");
+    //! Last computer this computer's microphone was sent to
+    inline static const auto MicTarget = QStringLiteral("stream/micTarget");
+    //! Silence this computer's speakers while its sound plays elsewhere
+    inline static const auto MuteLocalSound = QStringLiteral("stream/muteLocalSound");
+    //! Last computer this computer's sound was sent to
+    inline static const auto SoundTarget = QStringLiteral("stream/soundTarget");
   };
 
   struct Computer
@@ -353,9 +361,13 @@ private:
     , Server::Win32KeepForeground
     , Stream::AllowViewing
     , Stream::Audio
+    , Stream::ExtendTarget
     , Stream::FrameRate
+    , Stream::MicTarget
+    , Stream::MuteLocalSound
     , Stream::Port
     , Stream::Resolution
+    , Stream::SoundTarget
   };
 
   // When checking the default values this list contains the ones that default to false.
@@ -401,6 +413,7 @@ private:
     , Server::Win32KeepForeground
     , Stream::AllowViewing
     , Stream::Audio
+    , Stream::MuteLocalSound
   };
 
   // Settings saved in our State file

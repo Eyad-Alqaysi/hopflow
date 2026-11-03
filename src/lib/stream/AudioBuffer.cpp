@@ -26,6 +26,65 @@ QByteArray aacAudioSpecificConfig(uint32_t sampleRate, uint32_t channels)
   return config;
 }
 
+AudioConfig audioConfigFor(AudioCodec codec)
+{
+  if (codec == AudioCodec::Pcm16) {
+    return AudioConfig{AudioCodec::Pcm16, kAudioSampleRate, kAudioChannels, {}};
+  }
+  return AudioConfig{
+      AudioCodec::Aac, kAudioSampleRate, kAudioChannels, aacAudioSpecificConfig(kAudioSampleRate, kAudioChannels)
+  };
+}
+
+JitterDepth jitterDepth(AudioLatency latency)
+{
+  if (latency == AudioLatency::Low) {
+    return JitterDepth{kAudioSampleRate / 50, kAudioSampleRate * 2 / 25};
+  }
+  return JitterDepth{kAudioSampleRate / 20, kAudioSampleRate / 4};
+}
+
+QByteArray floatToPcm16(const float *samples, size_t count)
+{
+  QByteArray pcm(qsizetype(count * sizeof(int16_t)), Qt::Uninitialized);
+  auto *out = reinterpret_cast<int16_t *>(pcm.data());
+  for (size_t i = 0; i < count; ++i) {
+    out[i] = int16_t(std::clamp(samples[i], -1.0f, 1.0f) * 32767.0f);
+  }
+  return pcm;
+}
+
+std::vector<float> pcm16ToFloat(const QByteArray &pcm)
+{
+  const auto *in = reinterpret_cast<const int16_t *>(pcm.constData());
+  std::vector<float> samples(size_t(pcm.size()) / sizeof(int16_t));
+  for (size_t i = 0; i < samples.size(); ++i) {
+    samples[i] = float(in[i]) / 32768.0f;
+  }
+  return samples;
+}
+
+std::vector<EncodedAudio> Pcm16Packetizer::pack(const float *samples, uint32_t frames)
+{
+  m_pending.append(floatToPcm16(samples, size_t(frames) * kAudioChannels));
+
+  std::vector<EncodedAudio> packets;
+  constexpr auto packetBytes = qsizetype(kPcmFramesPerPacket * kAudioChannels * sizeof(int16_t));
+  qsizetype offset = 0;
+  for (; m_pending.size() - offset >= packetBytes; offset += packetBytes) {
+    const auto timestamp = m_packets * kPcmFramesPerPacket * 1'000'000 / kAudioSampleRate;
+    packets.push_back(EncodedAudio{timestamp, m_pending.mid(offset, packetBytes)});
+    ++m_packets;
+  }
+  m_pending.remove(0, offset);
+  return packets;
+}
+
+PcmJitterBuffer::PcmJitterBuffer(uint32_t channels, JitterDepth depth)
+    : PcmJitterBuffer(channels, depth.startFrames, depth.maxFrames)
+{
+}
+
 PcmJitterBuffer::PcmJitterBuffer(uint32_t channels, uint32_t startFrames, uint32_t maxFrames)
     : m_channels(channels),
       m_startFrames(startFrames),

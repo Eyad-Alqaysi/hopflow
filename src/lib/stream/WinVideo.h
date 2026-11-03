@@ -12,7 +12,7 @@
 
 namespace hopflow::stream {
 
-//! Captures the primary display with DXGI desktop duplication and encodes it with Media Foundation
+//! Captures a display with DXGI desktop duplication and encodes it with Media Foundation
 /*!
 Capture, scaling and colour conversion run on the GPU; the frame is then
 encoded by the Media Foundation H.264 encoder, set for low latency.
@@ -21,7 +21,8 @@ Everything runs on one worker thread.
 class WinScreenSource : public IVideoSource
 {
 public:
-  WinScreenSource();
+  //! Capture the display with GDI name \p displayId (\\.\DISPLAYn), or the primary display when empty
+  explicit WinScreenSource(const QString &displayId = {});
   ~WinScreenSource() override;
 
   void start(const Preset &preset, ConfigReady onConfig, FrameReady onFrame, Failed onFailed) override;

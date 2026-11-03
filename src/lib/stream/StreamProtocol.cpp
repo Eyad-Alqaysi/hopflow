@@ -15,7 +15,7 @@ namespace {
 
 bool isKnownType(uint8_t type)
 {
-  return type >= static_cast<uint8_t>(FrameType::Hello) && type <= static_cast<uint8_t>(FrameType::Bye);
+  return type >= static_cast<uint8_t>(FrameType::Hello) && type <= static_cast<uint8_t>(FrameType::DisplayInfo);
 }
 
 //! Reads a payload completely, or fails if it is short or has bytes left over
@@ -92,7 +92,12 @@ std::optional<Frame> FrameParser::next()
 
 QByteArray encode(const Hello &hello)
 {
-  return encodeWith([&](QDataStream &out) { out << hello.version << hello.computerName.toUtf8(); });
+  return encodeWith([&](QDataStream &out) {
+    out << hello.version << hello.computerName.toUtf8();
+    if (hello.version >= 2) {
+      out << static_cast<uint8_t>(hello.kind);
+    }
+  });
 }
 
 QByteArray encode(const VideoConfig &config)
@@ -114,6 +119,11 @@ QByteArray encode(const AudioConfig &config)
   });
 }
 
+QByteArray encode(const DisplayInfo &info)
+{
+  return encodeWith([&](QDataStream &out) { out << info.width << info.height << info.refreshHz << info.scalePercent; });
+}
+
 QByteArray encode(const Stats &stats)
 {
   return encodeWith([&](QDataStream &out) { out << stats.receivedFps << stats.queuedFrames; });
@@ -126,6 +136,16 @@ std::optional<Hello> decodeHello(const QByteArray &payload)
     QByteArray name;
     in >> hello.version >> name;
     hello.computerName = QString::fromUtf8(name);
+    if (hello.version < 2) {
+      hello.kind = SessionKind::ScreenShare;
+      return hello;
+    }
+    uint8_t kind = 0;
+    in >> kind;
+    if (kind > static_cast<uint8_t>(SessionKind::Microphone)) {
+      return std::nullopt;
+    }
+    hello.kind = static_cast<SessionKind>(kind);
     return hello;
   });
 }
@@ -175,6 +195,19 @@ std::optional<AudioConfig> decodeAudioConfig(const QByteArray &payload)
     config.reset();
   }
   return config;
+}
+
+std::optional<DisplayInfo> decodeDisplayInfo(const QByteArray &payload)
+{
+  auto info = decodeWith(payload, [](QDataStream &in) -> std::optional<DisplayInfo> {
+    DisplayInfo info;
+    in >> info.width >> info.height >> info.refreshHz >> info.scalePercent;
+    return info;
+  });
+  if (info && (info->width == 0 || info->height == 0 || info->scalePercent == 0)) {
+    info.reset();
+  }
+  return info;
 }
 
 std::optional<Stats> decodeStats(const QByteArray &payload)

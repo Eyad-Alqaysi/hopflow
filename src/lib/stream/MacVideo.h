@@ -39,11 +39,12 @@ private:
   std::shared_ptr<detail::EncoderState> m_state;
 };
 
-//! Captures the main display with ScreenCaptureKit and encodes it with VideoToolbox
+//! Captures a display with ScreenCaptureKit and encodes it with VideoToolbox
 class MacScreenSource : public IVideoSource
 {
 public:
-  MacScreenSource();
+  //! Capture the display with CGDirectDisplayID \p displayId, or the main display when 0
+  explicit MacScreenSource(uint32_t displayId = 0);
   ~MacScreenSource() override;
 
   void start(const Preset &preset, ConfigReady onConfig, FrameReady onFrame, Failed onFailed) override;

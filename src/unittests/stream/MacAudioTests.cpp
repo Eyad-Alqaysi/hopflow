@@ -9,6 +9,8 @@
 #include "stream/AudioBuffer.h"
 #include "stream/MacAudio.h"
 
+#include <CoreAudio/CoreAudio.h>
+
 #include <QTest>
 
 #include <cmath>
@@ -67,6 +69,39 @@ void MacAudioTests::aacRoundTrip()
   QVERIFY2(std::abs(rms - 0.3536) < 0.05, qPrintable(QStringLiteral("rms %1").arg(rms)));
   const double hz = crossings / 2.0 / (double(end - start) / 48000.0);
   QVERIFY2(std::abs(hz - 1000.0) < 20.0, qPrintable(QStringLiteral("pitch %1 Hz").arg(hz)));
+}
+
+void MacAudioTests::pcmOutputPlaysOnDefaultDevice_data()
+{
+  QTest::addColumn<bool>("byId");
+  // the way the virtual microphone opens its hidden feed device
+  QTest::newRow("by ID") << true;
+  // the way shared sound plays, following the default device
+  QTest::newRow("following the default") << false;
+}
+
+void MacAudioTests::pcmOutputPlaysOnDefaultDevice()
+{
+  QFETCH(bool, byId);
+  const AudioObjectPropertyAddress address{
+      kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
+  };
+  AudioObjectID device = kAudioObjectUnknown;
+  UInt32 size = sizeof(device);
+  if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, &device) != noErr ||
+      device == kAudioObjectUnknown) {
+    QSKIP("this Mac has no sound output");
+  }
+
+  // 100 ms of silence, so the test is never heard
+  constexpr uint32_t kFrames = kAudioSampleRate / 10;
+  PcmJitterBuffer buffer(kAudioChannels, 0, kFrames);
+  const std::vector<float> silence(size_t(kFrames) * kAudioChannels, 0.0f);
+  buffer.push(silence.data(), kFrames);
+
+  MacPcmOutput output(buffer);
+  QVERIFY(output.start(byId ? device : kAudioObjectUnknown, kAudioSampleRate / 200));
+  QTRY_COMPARE_WITH_TIMEOUT(buffer.bufferedFrames(), 0u, 2000);
 }
 
 QTEST_MAIN(MacAudioTests)

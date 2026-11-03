@@ -18,6 +18,9 @@ private Q_SLOTS:
   void parserRejectsUnknownType();
   void parserRejectsOversizedFrame();
   void payloadRoundTrips();
+  void helloCarriesSessionKind();
+  void helloFromVersionOneIsScreenShare();
+  void displayInfoRoundTrips();
   void payloadRejectsMalformed_data();
   void payloadRejectsMalformed();
   void outputSize_data();

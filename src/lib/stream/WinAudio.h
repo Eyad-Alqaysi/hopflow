@@ -12,15 +12,22 @@
 
 namespace hopflow::stream {
 
-//! Captures what the PC is playing (WASAPI loopback) and encodes it as AAC
+//! Captures what the PC is playing (WASAPI loopback) and sends it as AAC, or as Pcm16 for low latency
+/*!
+With \p muteLocal the PC's speakers are muted while it captures and set back
+as they were afterwards; loopback still hears what is playing.
+*/
 class WinSystemAudioSource : public IAudioSource
 {
 public:
-  WinSystemAudioSource();
+  explicit WinSystemAudioSource(AudioCodec codec = AudioCodec::Aac, bool muteLocal = false);
   ~WinSystemAudioSource() override;
 
   void start(ConfigReady onConfig, PacketReady onPacket, Failed onFailed) override;
   void stop() override;
+
+  //! Unmute speakers that a run which crashed while muting them left muted
+  static void restoreMutedSpeakers();
 
   struct Impl;
 
@@ -32,7 +39,7 @@ private:
 class WinAudioSink : public IAudioSink
 {
 public:
-  WinAudioSink();
+  explicit WinAudioSink(AudioLatency latency = AudioLatency::Smooth);
   ~WinAudioSink() override;
 
   bool configure(const AudioConfig &config) override;

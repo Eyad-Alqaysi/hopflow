@@ -11,6 +11,7 @@
 
 #include <windows.h>
 
+#include <dxgi.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
@@ -18,7 +19,7 @@
 #include <strmif.h>
 #include <wrl/client.h>
 
-//! Media Foundation plumbing shared by the Windows audio and video code
+//! Media Foundation and DXGI plumbing shared by the Windows audio and video code
 namespace hopflow::stream::win {
 
 using Microsoft::WRL::ComPtr;
@@ -33,6 +34,9 @@ void setCodecFlag(ICodecAPI *codec, const GUID &key, bool value);
 ComPtr<IMFSample> sampleWithBuffer(DWORD size);
 ComPtr<IMFSample> sampleWithBytes(const QByteArray &bytes, int64_t timestampUs);
 QByteArray sampleBytes(IMFSample *sample);
+
+//! The desktop output named \p deviceName (\\.\DISPLAYn), or the primary one when empty, with its adapter
+bool findOutput(const QString &deviceName, ComPtr<IDXGIAdapter1> &adapter, ComPtr<IDXGIOutput> &output);
 
 //! Run every output the transform has ready through \p handle
 /*!

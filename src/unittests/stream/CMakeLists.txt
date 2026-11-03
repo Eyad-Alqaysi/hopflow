@@ -37,6 +37,7 @@ if(APPLE)
     SOURCE MacAudioTests.cpp
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
   )
+  target_link_libraries(MacAudioTests "-framework CoreAudio")
 
   create_test(
     NAME MacVideoTests
@@ -54,3 +55,66 @@ create_test(
   SOURCE AudioBufferTests.cpp
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
 )
+
+create_test(
+  NAME VirtualDisplayDriverTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE VirtualDisplayDriverTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+create_test(
+  NAME VirtualDisplayModeTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE VirtualDisplayModeTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+create_test(
+  NAME VideoLatencyGuardTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE VideoLatencyGuardTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+create_test(
+  NAME MicrophoneTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE MicrophoneTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+create_test(
+  NAME MutedSpeakersTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE MutedSpeakersTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+# the driver's ring buffer is header only, so it is tested on every platform
+create_test(
+  NAME LoopbackRingTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE LoopbackRingTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+target_include_directories(LoopbackRingTests PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/hopflow-mic-driver")
+
+if(APPLE)
+  create_test(
+    NAME MicDriverTests
+    DEPENDS stream
+    LIBS base arch ${extra_libs}
+    SOURCE MicDriverTests.cpp
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+  )
+  add_dependencies(MicDriverTests HopflowMic)
+  target_compile_definitions(MicDriverTests PRIVATE HOPFLOW_MIC_DRIVER="$<TARGET_BUNDLE_DIR:HopflowMic>")
+  target_link_libraries(MicDriverTests "-framework CoreAudio" "-framework CoreFoundation")
+endif()

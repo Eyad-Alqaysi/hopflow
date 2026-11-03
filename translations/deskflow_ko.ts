@@ -144,6 +144,89 @@ p, li { white-space: pre-wrap; }
     </message>
 </context>
 <context>
+    <name>AudioRouteController</name>
+    <message>
+        <source>Send Sound To…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send Microphone To…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Sending Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Sending Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playing this computer&apos;s sound on %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending this computer&apos;s microphone to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped sending sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped sending the microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending sound stopped: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending the microphone stopped: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer at %1 has not been paired with this one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send Microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer to play on. Hopflow must be running there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play on:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute this computer while sending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending sound is not supported on this computer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending the microphone is not supported on this computer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sending needs a TLS certificate, which could not be created.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ClientConfigDialog</name>
     <message>
         <source>Client Configuration</source>
@@ -338,6 +421,73 @@ p, li { white-space: pre-wrap; }
     <message>
         <source>&lt;center&gt;Computer: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;Double click to edit settings&lt;br&gt;Drag computer to the trashcan to remove it</source>
         <translation type="unfinished">&lt;center&gt;컴퓨터: &lt;b&gt;%1&lt;/b&gt;&lt;/center&gt;&lt;br&gt;설정을 편집하려면 두 번 클릭하세요&lt;br&gt;컴퓨터를 휴지통으로 드래그하여 제거하세요</translation>
+    </message>
+</context>
+<context>
+    <name>ExtendDisplayController</name>
+    <message>
+        <source>Extend Display To…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop Extending Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The computer at %1 has not been paired with this one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extend Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a display to this computer, shown on the monitor of:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; is not the address of a computer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extending the display is not available on this computer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extending the display needs a TLS certificate, which could not be created.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adding the extended display, which can take a few seconds…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The extended display could not be created: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The extended display cannot be captured on this computer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse and keyboard sharing is paused while the display is extended</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extending this display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped extending the display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extending the display stopped: %1</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -945,6 +1095,24 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>Super</source>
         <translation type="unfinished">Super</translation>
     </message>
+    <message>
+        <source>Screen Sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Only allow it if this fingerprint matches the one shown in %1 on that computer:
+
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Don&apos;t Allow</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ScreenShareController</name>
@@ -954,10 +1122,6 @@ Additionally, check you are able to %1 the server config file: %2</source>
     </message>
     <message>
         <source>Stop Sharing Screen</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>A computer at %1 wants to show its screen here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -985,7 +1149,35 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 stopped sending its %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The %1 from %2 cannot be played: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playing the %1 of %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>microphone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Share Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A computer at %1 wants to send its screen or sound here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -996,33 +1188,23 @@ Additionally, check you are able to %1 the server config file: %2</source>
         <source>Sharing stopped: %1</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>Screen Sharing</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Only allow it if this fingerprint matches the one shown in %1 on that computer:
-
-%2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Allow</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Don&apos;t Allow</source>
-        <translation type="unfinished"></translation>
-    </message>
 </context>
 <context>
     <name>ScreenViewerWindow</name>
+    <message>
+        <source>%1 – %2 extended display</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>%1 – %2 screen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Waiting for %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Press Esc again to stop showing the extended display</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

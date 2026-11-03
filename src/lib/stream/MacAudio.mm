@@ -8,11 +8,11 @@
 
 #include "stream/MacAudio.h"
 
-#include "stream/AudioBuffer.h"
-
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreMedia/CoreMedia.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
+
+#include <QDebug>
 
 #include <mutex>
 
@@ -22,20 +22,6 @@ namespace {
 
 // returned by input callbacks when they have nothing more to give right now
 constexpr OSStatus kNoMoreInput = 'hfnd';
-
-AudioStreamBasicDescription pcmFormat()
-{
-  AudioStreamBasicDescription format{};
-  format.mSampleRate = kAudioSampleRate;
-  format.mFormatID = kAudioFormatLinearPCM;
-  format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-  format.mChannelsPerFrame = kAudioChannels;
-  format.mBitsPerChannel = 32;
-  format.mFramesPerPacket = 1;
-  format.mBytesPerFrame = kAudioChannels * sizeof(float);
-  format.mBytesPerPacket = format.mBytesPerFrame;
-  return format;
-}
 
 AudioStreamBasicDescription aacFormat()
 {
@@ -51,6 +37,83 @@ AudioStreamBasicDescription aacFormat()
 } // namespace
 
 namespace hopflow::stream {
+
+AudioStreamBasicDescription stereoPcmFormat(bool floats, Float64 sampleRate)
+{
+  const UInt32 bytes = floats ? sizeof(float) : sizeof(int16_t);
+  AudioStreamBasicDescription format{};
+  format.mSampleRate = sampleRate;
+  format.mFormatID = kAudioFormatLinearPCM;
+  format.mFormatFlags = (floats ? kAudioFormatFlagIsFloat : kAudioFormatFlagIsSignedInteger) | kAudioFormatFlagIsPacked;
+  format.mChannelsPerFrame = kAudioChannels;
+  format.mBitsPerChannel = bytes * 8;
+  format.mFramesPerPacket = 1;
+  format.mBytesPerFrame = kAudioChannels * bytes;
+  format.mBytesPerPacket = format.mBytesPerFrame;
+  return format;
+}
+
+void interleaveStereo(
+    const AudioBufferList &list, const AudioStreamBasicDescription &format, UInt32 frames, std::vector<float> &out
+)
+{
+  out.assign(size_t(frames) * kAudioChannels, 0.0f);
+  if (list.mNumberBuffers == 0 || format.mChannelsPerFrame == 0) {
+    return;
+  }
+  const bool planar = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+  for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
+    // mono is heard on both sides
+    const UInt32 source = std::min(channel, format.mChannelsPerFrame - 1);
+    const auto &buffer = list.mBuffers[planar ? std::min(source, list.mNumberBuffers - 1) : 0];
+    const auto *data = static_cast<const float *>(buffer.mData);
+    if (data == nullptr) {
+      continue;
+    }
+    for (UInt32 frame = 0; frame < frames; ++frame) {
+      out[size_t(frame) * kAudioChannels + channel] =
+          planar ? data[frame] : data[size_t(frame) * buffer.mNumberChannels + source];
+    }
+  }
+}
+
+//
+// MacDefaultDeviceWatch
+//
+
+struct MacDefaultDeviceWatch::Impl
+{
+  AudioObjectPropertyAddress address{};
+  dispatch_queue_t queue = dispatch_queue_create("io.github.eyad_alqaysi.hopflow.defaultdevice", DISPATCH_QUEUE_SERIAL);
+  AudioObjectPropertyListenerBlock listener = nil;
+};
+
+MacDefaultDeviceWatch::MacDefaultDeviceWatch(Direction direction, std::function<void()> changed)
+    : m_impl(std::make_unique<Impl>())
+{
+  m_impl->address = AudioObjectPropertyAddress{
+      direction == Direction::Input ? kAudioHardwarePropertyDefaultInputDevice
+                                    : kAudioHardwarePropertyDefaultOutputDevice,
+      kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain
+  };
+  m_impl->listener = ^(UInt32, const AudioObjectPropertyAddress *) {
+    changed();
+  };
+  if (const auto status = AudioObjectAddPropertyListenerBlock(
+          kAudioObjectSystemObject, &m_impl->address, m_impl->queue, m_impl->listener
+      );
+      status != noErr) {
+    m_impl->listener = nil;
+    qWarning().noquote() << "cannot follow changes of the default sound device, error" << status;
+  }
+}
+
+MacDefaultDeviceWatch::~MacDefaultDeviceWatch()
+{
+  if (m_impl->listener != nil) {
+    AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject, &m_impl->address, m_impl->queue, m_impl->listener);
+  }
+}
 
 //
 // MacAacEncoder
@@ -101,7 +164,7 @@ MacAacEncoder::~MacAacEncoder() = default;
 
 bool MacAacEncoder::open()
 {
-  const auto in = pcmFormat();
+  const auto in = stereoPcmFormat();
   const auto out = aacFormat();
   if (AudioConverterNew(&in, &out, &m_impl->converter) != noErr) {
     return false;
@@ -204,7 +267,7 @@ MacAacDecoder::~MacAacDecoder() = default;
 bool MacAacDecoder::open()
 {
   const auto in = aacFormat();
-  const auto out = pcmFormat();
+  const auto out = stereoPcmFormat();
   return AudioConverterNew(&in, &out, &m_impl->converter) == noErr;
 }
 
@@ -233,6 +296,111 @@ std::vector<float> MacAacDecoder::decode(const QByteArray &packet)
   return samples;
 }
 
+//
+// MacSoundEncoder
+//
+
+MacSoundEncoder::MacSoundEncoder(AudioCodec codec) : m_codec(codec)
+{
+}
+
+bool MacSoundEncoder::open()
+{
+  return m_codec == AudioCodec::Pcm16 || m_aac.open();
+}
+
+AudioConfig MacSoundEncoder::config() const
+{
+  return audioConfigFor(m_codec);
+}
+
+std::vector<EncodedAudio> MacSoundEncoder::encode(const float *samples, uint32_t frames)
+{
+  return m_codec == AudioCodec::Pcm16 ? m_pcm.pack(samples, frames) : m_aac.encode(samples, frames);
+}
+
+} // namespace hopflow::stream
+
+//
+// MacPcmOutput
+//
+
+namespace hopflow::stream {
+
+struct MacPcmOutput::Impl
+{
+  explicit Impl(PcmJitterBuffer &buffer) : buffer(buffer)
+  {
+  }
+
+  PcmJitterBuffer &buffer;
+  AudioComponentInstance unit = nullptr;
+
+  ~Impl()
+  {
+    if (unit != nullptr) {
+      AudioOutputUnitStop(unit);
+      AudioUnitUninitialize(unit);
+      AudioComponentInstanceDispose(unit);
+    }
+  }
+
+  //! Runs on the device's real time thread
+  static OSStatus render(
+      void *user, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *, UInt32, UInt32 frames,
+      AudioBufferList *data
+  )
+  {
+    auto *self = static_cast<Impl *>(user);
+    if (self->buffer.pull(static_cast<float *>(data->mBuffers[0].mData), frames) == 0) {
+      *flags |= kAudioUnitRenderAction_OutputIsSilence;
+    }
+    return noErr;
+  }
+};
+
+MacPcmOutput::MacPcmOutput(PcmJitterBuffer &buffer) : m_impl(std::make_unique<Impl>(buffer))
+{
+}
+
+MacPcmOutput::~MacPcmOutput() = default;
+
+bool MacPcmOutput::start(AudioObjectID device, UInt32 bufferFrames)
+{
+  // the default output unit is an AUHAL that tracks the default device itself
+  const bool followDefault = device == kAudioObjectUnknown;
+  const AudioComponentDescription description{
+      kAudioUnitType_Output, followDefault ? kAudioUnitSubType_DefaultOutput : kAudioUnitSubType_HALOutput,
+      kAudioUnitManufacturer_Apple, 0, 0
+  };
+  AudioComponent component = AudioComponentFindNext(nullptr, &description);
+  if (component == nullptr || AudioComponentInstanceNew(component, &m_impl->unit) != noErr) {
+    m_impl->unit = nullptr;
+    return false;
+  }
+
+  // the unit converts 48 kHz stereo floats to whatever the device runs at
+  const auto format = stereoPcmFormat();
+  const AURenderCallbackStruct callback{Impl::render, m_impl.get()};
+  if ((!followDefault &&
+       AudioUnitSetProperty(
+           m_impl->unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, sizeof(device)
+       ) != noErr) ||
+      AudioUnitSetProperty(
+          m_impl->unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, sizeof(format)
+      ) != noErr ||
+      AudioUnitSetProperty(
+          m_impl->unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback)
+      ) != noErr) {
+    return false;
+  }
+  // only a request: the device may keep a larger buffer, which costs latency but still plays
+  AudioUnitSetProperty(
+      m_impl->unit, kAudioDevicePropertyBufferFrameSize, kAudioUnitScope_Global, 0, &bufferFrames, sizeof(bufferFrames)
+  );
+  return AudioUnitInitialize(m_impl->unit) == noErr && AudioOutputUnitStart(m_impl->unit) == noErr;
+}
+
 } // namespace hopflow::stream
 
 //
@@ -243,9 +411,13 @@ namespace hopflow::stream {
 
 struct MacSystemAudioSource::Impl
 {
+  explicit Impl(AudioCodec codec) : encoder(codec)
+  {
+  }
+
   std::mutex mutex;
   bool running = false;
-  MacAacEncoder encoder;
+  MacSoundEncoder encoder;
   IAudioSource::PacketReady onPacket;
   IAudioSource::Failed onFailed;
   dispatch_queue_t queue = dispatch_queue_create("io.github.eyad_alqaysi.hopflow.audio", DISPATCH_QUEUE_SERIAL);
@@ -281,18 +453,7 @@ struct MacSystemAudioSource::Impl
 
     // ScreenCaptureKit delivers one buffer per channel; the encoder wants them interleaved
     const auto frames = UInt32(CMSampleBufferGetNumSamples(sample));
-    interleaved.assign(size_t(frames) * kAudioChannels, 0.0f);
-    const bool planar = (format->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
-    for (UInt32 channel = 0; channel < kAudioChannels; ++channel) {
-      const UInt32 source = std::min<UInt32>(channel, format->mChannelsPerFrame - 1);
-      for (UInt32 frame = 0; frame < frames; ++frame) {
-        const float *data =
-            planar ? static_cast<const float *>(list.mBuffers[std::min(source, list.mNumberBuffers - 1)].mData)
-                   : static_cast<const float *>(list.mBuffers[0].mData);
-        interleaved[size_t(frame) * kAudioChannels + channel] =
-            planar ? data[frame] : data[size_t(frame) * format->mChannelsPerFrame + source];
-      }
-    }
+    interleaveStereo(list, *format, frames, interleaved);
     CFRelease(retained);
 
     const auto packets = encoder.encode(interleaved.data(), frames);
@@ -332,7 +493,7 @@ API_AVAILABLE(macos(13.0))
 
 namespace hopflow::stream {
 
-MacSystemAudioSource::MacSystemAudioSource() : m_impl(std::make_shared<Impl>())
+MacSystemAudioSource::MacSystemAudioSource(AudioCodec codec) : m_impl(std::make_shared<Impl>(codec))
 {
 }
 
@@ -363,11 +524,7 @@ void MacSystemAudioSource::start(ConfigReady onConfig, PacketReady onPacket, Fai
       impl->onFailed = std::move(onFailed);
       impl->running = true;
     }
-    onConfig(
-        AudioConfig{
-            AudioCodec::Aac, kAudioSampleRate, kAudioChannels, aacAudioSpecificConfig(kAudioSampleRate, kAudioChannels)
-        }
-    );
+    onConfig(impl->encoder.config());
 
     [SCShareableContent
         getShareableContentExcludingDesktopWindows:NO
@@ -451,33 +608,21 @@ void MacSystemAudioSource::stop()
 
 struct MacAudioSink::Impl
 {
-  // start once 50 ms are buffered, never let more than 250 ms build up
-  PcmJitterBuffer buffer{kAudioChannels, kAudioSampleRate / 20, kAudioSampleRate / 4};
+  explicit Impl(AudioLatency latency)
+      : buffer(kAudioChannels, jitterDepth(latency)),
+        bufferFrames(latency == AudioLatency::Low ? kAudioSampleRate / 200 : kAudioSampleRate / 100)
+  {
+  }
+
+  PcmJitterBuffer buffer;
+  //! 5 ms at a time for low latency, 10 ms otherwise
+  const UInt32 bufferFrames;
   MacAacDecoder decoder;
-  AudioQueueRef queue = nullptr;
+  MacPcmOutput output{buffer};
   bool pcm = false;
-
-  static constexpr UInt32 kBufferFrames = kAudioSampleRate / 100; // 10 ms
-  static constexpr int kBufferCount = 3;
-
-  ~Impl()
-  {
-    if (queue != nullptr) {
-      AudioQueueStop(queue, true);
-      AudioQueueDispose(queue, true);
-    }
-  }
-
-  static void refill(void *user, AudioQueueRef queue, AudioQueueBufferRef buffer)
-  {
-    auto *self = static_cast<Impl *>(user);
-    self->buffer.pull(static_cast<float *>(buffer->mAudioData), kBufferFrames);
-    buffer->mAudioDataByteSize = kBufferFrames * kAudioChannels * sizeof(float);
-    AudioQueueEnqueueBuffer(queue, buffer, 0, nullptr);
-  }
 };
 
-MacAudioSink::MacAudioSink() : m_impl(std::make_unique<Impl>())
+MacAudioSink::MacAudioSink(AudioLatency latency) : m_impl(std::make_unique<Impl>(latency))
 {
 }
 
@@ -492,34 +637,12 @@ bool MacAudioSink::configure(const AudioConfig &config)
   if (!m_impl->pcm && !m_impl->decoder.open()) {
     return false;
   }
-
-  const auto format = pcmFormat();
-  if (AudioQueueNewOutput(&format, Impl::refill, m_impl.get(), nullptr, kCFRunLoopCommonModes, 0, &m_impl->queue) !=
-      noErr) {
-    return false;
-  }
-  for (int i = 0; i < Impl::kBufferCount; ++i) {
-    AudioQueueBufferRef buffer = nullptr;
-    AudioQueueAllocateBuffer(m_impl->queue, Impl::kBufferFrames * kAudioChannels * sizeof(float), &buffer);
-    Impl::refill(m_impl.get(), m_impl->queue, buffer);
-  }
-  return AudioQueueStart(m_impl->queue, nullptr) == noErr;
+  return m_impl->output.start(kAudioObjectUnknown, m_impl->bufferFrames);
 }
 
 void MacAudioSink::play(const EncodedAudio &packet)
 {
-  if (m_impl->pcm) {
-    const auto frames = UInt32(packet.data.size() / qsizetype(sizeof(int16_t) * kAudioChannels));
-    const auto *pcm = reinterpret_cast<const int16_t *>(packet.data.constData());
-    std::vector<float> samples(size_t(frames) * kAudioChannels);
-    for (size_t i = 0; i < samples.size(); ++i) {
-      samples[i] = float(pcm[i]) / 32768.0f;
-    }
-    m_impl->buffer.push(samples.data(), frames);
-    return;
-  }
-
-  const auto samples = m_impl->decoder.decode(packet.data);
+  const auto samples = m_impl->pcm ? pcm16ToFloat(packet.data) : m_impl->decoder.decode(packet.data);
   if (!samples.empty()) {
     m_impl->buffer.push(samples.data(), UInt32(samples.size() / kAudioChannels));
   }

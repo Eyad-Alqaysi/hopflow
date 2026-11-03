@@ -32,6 +32,7 @@ StreamReceiver::StreamReceiver(StreamConnection *connection, QObject *parent)
   m_statsTimer.setInterval(1000);
   connect(&m_statsTimer, &QTimer::timeout, this, &StreamReceiver::sendStats);
   m_statsTimer.start();
+  m_clock.start();
 }
 
 StreamReceiver::~StreamReceiver() = default;
@@ -49,6 +50,7 @@ void StreamReceiver::onFrame(const Frame &frame)
   case FrameType::Hello:
     if (const auto hello = decodeHello(frame.payload)) {
       m_computerName = hello->computerName;
+      m_kind = hello->kind;
       Q_EMIT started(m_computerName);
     }
     break;
@@ -82,6 +84,7 @@ void StreamReceiver::onFrame(const Frame &frame)
 
 void StreamReceiver::onVideoConfig(const VideoConfig &config)
 {
+  m_latency.reset();
   m_decoder = createVideoDecoder(config.codec);
   if (!m_decoder || !m_decoder->configure(config)) {
     m_decoder.reset();
@@ -96,6 +99,16 @@ void StreamReceiver::onVideoFrame(const Frame &frame)
     return;
   }
 
+  if (!m_latency.shouldShow(frame.timestampUs, m_clock.nsecsElapsed() / 1000, decoded->keyframe)) {
+    if (!m_catchingUp) {
+      m_catchingUp = true;
+      qInfo("screen stream fell behind, skipping to the next keyframe");
+    }
+    requestKeyframe();
+    return;
+  }
+  m_catchingUp = false;
+
   const auto image = m_decoder->decode(EncodedVideo{frame.timestampUs, decoded->keyframe, decoded->data});
   if (image.isNull()) {
     requestKeyframe();
@@ -106,11 +119,35 @@ void StreamReceiver::onVideoFrame(const Frame &frame)
   Q_EMIT frameReady(image);
 }
 
+void StreamReceiver::sendDisplayInfo(const DisplayInfo &info)
+{
+  if (m_connection) {
+    m_connection->send(Frame{FrameType::DisplayInfo, 0, encode(info)});
+  }
+}
+
 void StreamReceiver::onAudioConfig(const AudioConfig &config)
 {
-  m_audio = createAudioSink(config.codec);
+  switch (m_kind) {
+  case SessionKind::Microphone:
+    m_audio = createVirtualMicSink(config.codec);
+    if (!m_audio) {
+      Q_EMIT audioUnavailable(virtualMicUnavailableReason());
+      return;
+    }
+    break;
+  case SessionKind::Sound:
+    m_audio = createAudioSink(config.codec, AudioLatency::Low);
+    break;
+  case SessionKind::ScreenShare:
+  case SessionKind::ExtendDisplay:
+    m_audio = createAudioSink(config.codec, AudioLatency::Smooth);
+    break;
+  }
+
   if (m_audio && !m_audio->configure(config)) {
     m_audio.reset();
+    Q_EMIT audioUnavailable(QStringLiteral("this computer cannot play the sound it was sent"));
   }
 }
 

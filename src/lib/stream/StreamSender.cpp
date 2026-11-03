@@ -76,8 +76,28 @@ void StreamSender::onConnected(StreamConnection *connection)
   connection->setParent(this);
   connect(connection, &StreamConnection::frameReceived, this, &StreamSender::onFrame);
   connect(connection, &StreamConnection::closed, this, [this](const QString &reason) { finish(reason); });
-  connection->send(Frame{FrameType::Hello, 0, encode(Hello{kProtocolVersion, m_computerName})});
+  connection->send(Frame{FrameType::Hello, 0, encode(Hello{kProtocolVersion, m_computerName, m_preset.kind})});
   m_clock.start();
+
+  if (m_video) {
+    startVideo(std::move(m_video));
+  }
+  startAudio();
+
+  Q_EMIT streaming(connection->peerAddress());
+}
+
+void StreamSender::startVideo(std::unique_ptr<IVideoSource> video)
+{
+  if (m_video && m_video.get() != video.get()) {
+    m_video->stop();
+  }
+  m_video = std::move(video);
+  m_rate.reset();
+  m_needKeyframe = true;
+  if (!m_connection || !m_video) {
+    return;
+  }
 
   // sources call back from their own threads; hop to ours before touching the connection
   QPointer<StreamSender> self(this);
@@ -105,35 +125,46 @@ void StreamSender::onConnected(StreamConnection *connection)
         });
       }
   );
+}
 
-  if (m_audio) {
-    m_audio->start(
-        [self](const AudioConfig &config) {
-          QMetaObject::invokeMethod(self, [self, config] {
-            if (self) {
-              self->onAudioConfig(config);
-            }
-          });
-        },
-        [self](const EncodedAudio &packet) {
-          QMetaObject::invokeMethod(self, [self, packet] {
-            if (self) {
-              self->onAudioPacket(packet);
-            }
-          });
-        },
-        [self](const QString &) {
-          // sharing goes on without sound
-          QMetaObject::invokeMethod(self, [self] {
-            if (self && self->m_audio) {
-              self->m_audio->stop();
-            }
-          });
-        }
-    );
+void StreamSender::startAudio()
+{
+  if (!m_audio) {
+    return;
   }
 
-  Q_EMIT streaming(connection->peerAddress());
+  // without video, sound is the whole session, so losing it ends the session
+  const bool audioOnly = m_preset.kind == SessionKind::Sound || m_preset.kind == SessionKind::Microphone;
+  QPointer<StreamSender> self(this);
+  m_audio->start(
+      [self](const AudioConfig &config) {
+        QMetaObject::invokeMethod(self, [self, config] {
+          if (self) {
+            self->onAudioConfig(config);
+          }
+        });
+      },
+      [self](const EncodedAudio &packet) {
+        QMetaObject::invokeMethod(self, [self, packet] {
+          if (self) {
+            self->onAudioPacket(packet);
+          }
+        });
+      },
+      [self, audioOnly](const QString &message) {
+        QMetaObject::invokeMethod(self, [self, audioOnly, message] {
+          if (!self || !self->m_audio) {
+            return;
+          }
+          if (audioOnly) {
+            self->finish(message);
+          } else {
+            // screen sharing goes on without sound
+            self->m_audio->stop();
+          }
+        });
+      }
+  );
 }
 
 void StreamSender::onVideoConfig(const VideoConfig &config)
@@ -195,6 +226,10 @@ void StreamSender::onFrame(const Frame &frame)
   if (frame.type == FrameType::KeyframeRequest && m_video) {
     m_needKeyframe = true;
     m_video->requestKeyframe();
+  } else if (frame.type == FrameType::DisplayInfo) {
+    if (const auto info = decodeDisplayInfo(frame.payload)) {
+      Q_EMIT displayInfoReceived(*info);
+    }
   }
 }
 

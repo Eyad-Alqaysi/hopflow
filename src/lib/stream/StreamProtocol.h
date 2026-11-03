@@ -23,7 +23,7 @@ All integers are big endian.
 */
 namespace hopflow::stream {
 
-inline constexpr uint8_t kProtocolVersion = 1;
+inline constexpr uint8_t kProtocolVersion = 2;
 inline constexpr uint16_t kDefaultPort = 24802;
 inline constexpr uint32_t kHeaderSize = 13;
 //! Largest payload accepted, enough for a keyframe at native resolution
@@ -38,7 +38,9 @@ enum class FrameType : uint8_t
   AudioPacket = 5,
   KeyframeRequest = 6,
   Stats = 7,
-  Bye = 8
+  Bye = 8,
+  //! Viewer to sender: the monitor an extended display should match
+  DisplayInfo = 9
 };
 
 struct Frame
@@ -89,10 +91,24 @@ enum class AudioCodec : uint8_t
   Pcm16 = 1
 };
 
+//! What a connection is for, sent in Hello; version 1 peers only share screens
+enum class SessionKind : uint8_t
+{
+  //! A screen shown in a window
+  ScreenShare = 0,
+  //! A virtual display on the sender, shown full screen on the viewer's monitor
+  ExtendDisplay = 1,
+  //! The sender's sound, played on the viewer's speakers or headphones
+  Sound = 2,
+  //! The sender's microphone, fed into a virtual microphone on the viewer
+  Microphone = 3
+};
+
 struct Hello
 {
   uint8_t version = kProtocolVersion;
   QString computerName;
+  SessionKind kind = SessionKind::ScreenShare;
 };
 
 struct VideoConfig
@@ -120,6 +136,16 @@ struct AudioConfig
   QByteArray codecData;
 };
 
+struct DisplayInfo
+{
+  //! Size in physical pixels
+  uint16_t width = 0;
+  uint16_t height = 0;
+  uint16_t refreshHz = 0;
+  //! Device pixels per logical pixel, times 100
+  uint16_t scalePercent = 100;
+};
+
 struct Stats
 {
   uint16_t receivedFps = 0;
@@ -130,12 +156,14 @@ QByteArray encode(const Hello &hello);
 QByteArray encode(const VideoConfig &config);
 QByteArray encode(const VideoFrame &frame);
 QByteArray encode(const AudioConfig &config);
+QByteArray encode(const DisplayInfo &info);
 QByteArray encode(const Stats &stats);
 
 std::optional<Hello> decodeHello(const QByteArray &payload);
 std::optional<VideoConfig> decodeVideoConfig(const QByteArray &payload);
 std::optional<VideoFrame> decodeVideoFrame(const QByteArray &payload);
 std::optional<AudioConfig> decodeAudioConfig(const QByteArray &payload);
+std::optional<DisplayInfo> decodeDisplayInfo(const QByteArray &payload);
 std::optional<Stats> decodeStats(const QByteArray &payload);
 
 } // namespace hopflow::stream

@@ -10,6 +10,8 @@
 #include "stream/StreamPreset.h"
 #include "stream/StreamProtocol.h"
 
+#include <QDataStream>
+
 #include <QTest>
 
 using namespace hopflow::stream;
@@ -100,6 +102,43 @@ void StreamProtocolTests::payloadRoundTrips()
   const auto stats = decodeStats(encode(Stats{58, 3}));
   QVERIFY(stats);
   QCOMPARE(stats->receivedFps, uint16_t(58));
+}
+
+void StreamProtocolTests::helloCarriesSessionKind()
+{
+  const auto hello = decodeHello(encode(Hello{kProtocolVersion, QStringLiteral("PC"), SessionKind::Microphone}));
+  QVERIFY(hello);
+  QCOMPARE(hello->kind, SessionKind::Microphone);
+
+  // a kind this version does not know is refused rather than guessed
+  auto bytes = encode(Hello{kProtocolVersion, QStringLiteral("PC"), SessionKind::Sound});
+  bytes[bytes.size() - 1] = char(42);
+  QVERIFY(!decodeHello(bytes));
+}
+
+void StreamProtocolTests::helloFromVersionOneIsScreenShare()
+{
+  // version 1 hellos end after the name
+  QByteArray bytes;
+  QDataStream out(&bytes, QIODevice::WriteOnly);
+  out.setByteOrder(QDataStream::BigEndian);
+  out << uint8_t(1) << QByteArray("Old Mac");
+  const auto hello = decodeHello(bytes);
+  QVERIFY(hello);
+  QCOMPARE(hello->kind, SessionKind::ScreenShare);
+  QCOMPARE(hello->computerName, QStringLiteral("Old Mac"));
+}
+
+void StreamProtocolTests::displayInfoRoundTrips()
+{
+  const auto info = decodeDisplayInfo(encode(DisplayInfo{2560, 1440, 144, 150}));
+  QVERIFY(info);
+  QCOMPARE(info->width, uint16_t(2560));
+  QCOMPARE(info->height, uint16_t(1440));
+  QCOMPARE(info->refreshHz, uint16_t(144));
+  QCOMPARE(info->scalePercent, uint16_t(150));
+
+  QVERIFY(!decodeDisplayInfo(encode(DisplayInfo{0, 1440, 60, 100})));
 }
 
 void StreamProtocolTests::payloadRejectsMalformed_data()
