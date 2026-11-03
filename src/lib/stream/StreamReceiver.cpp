@@ -32,6 +32,7 @@ StreamReceiver::StreamReceiver(StreamConnection *connection, QObject *parent)
   m_statsTimer.setInterval(1000);
   connect(&m_statsTimer, &QTimer::timeout, this, &StreamReceiver::sendStats);
   m_statsTimer.start();
+  m_clock.start();
 }
 
 StreamReceiver::~StreamReceiver() = default;
@@ -83,6 +84,7 @@ void StreamReceiver::onFrame(const Frame &frame)
 
 void StreamReceiver::onVideoConfig(const VideoConfig &config)
 {
+  m_latency.reset();
   m_decoder = createVideoDecoder(config.codec);
   if (!m_decoder || !m_decoder->configure(config)) {
     m_decoder.reset();
@@ -96,6 +98,16 @@ void StreamReceiver::onVideoFrame(const Frame &frame)
   if (!decoded || !m_decoder) {
     return;
   }
+
+  if (!m_latency.shouldShow(frame.timestampUs, m_clock.nsecsElapsed() / 1000, decoded->keyframe)) {
+    if (!m_catchingUp) {
+      m_catchingUp = true;
+      qInfo("screen stream fell behind, skipping to the next keyframe");
+    }
+    requestKeyframe();
+    return;
+  }
+  m_catchingUp = false;
 
   const auto image = m_decoder->decode(EncodedVideo{frame.timestampUs, decoded->keyframe, decoded->data});
   if (image.isNull()) {

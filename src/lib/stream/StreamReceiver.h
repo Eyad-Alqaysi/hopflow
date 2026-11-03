@@ -8,6 +8,7 @@
 
 #include "stream/MediaInterfaces.h"
 #include "stream/StreamConnection.h"
+#include "stream/VideoLatencyGuard.h"
 
 #include <QElapsedTimer>
 #include <QImage>
@@ -72,6 +73,10 @@ private:
   QString m_computerName;
   SessionKind m_kind = SessionKind::ScreenShare;
   QTimer m_statsTimer;
+  //! Arrival times of frames, for the latency guard
+  QElapsedTimer m_clock;
+  VideoLatencyGuard m_latency;
+  bool m_catchingUp = false;
   QElapsedTimer m_lastKeyframeRequest;
   int m_framesThisSecond = 0;
   int m_fps = 0;

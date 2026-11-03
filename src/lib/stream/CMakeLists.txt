@@ -27,6 +27,8 @@ add_library(stream STATIC
   StreamSender.h
   TestPattern.cpp
   TestPattern.h
+  VideoLatencyGuard.cpp
+  VideoLatencyGuard.h
   VirtualDisplayDriver.cpp
   VirtualDisplayDriver.h
   VirtualDisplayMode.h

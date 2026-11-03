@@ -73,6 +73,14 @@ create_test(
 )
 
 create_test(
+  NAME VideoLatencyGuardTests
+  DEPENDS stream
+  LIBS base arch ${extra_libs}
+  SOURCE VideoLatencyGuardTests.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/src/lib/stream"
+)
+
+create_test(
   NAME MicrophoneTests
   DEPENDS stream
   LIBS base arch ${extra_libs}
