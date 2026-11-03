@@ -265,7 +265,7 @@ struct MacAudioTap::Impl
   }
 
   //! Read the tap on the queue; returns why it failed, or empty
-  static QString startIo(const std::shared_ptr<Impl> &impl)
+  static QString startIo(std::shared_ptr<Impl> impl)
   {
     // the block keeps impl alive until destroyTap() destroys the IOProc
     const auto created = AudioDeviceCreateIOProcIDWithBlock(

@@ -370,7 +370,7 @@ A display that was just added can take a moment to reach ScreenCaptureKit,
 so a missing one is looked for again \p attemptsLeft more times.
 */
 API_AVAILABLE(macos(12.3))
-void findDisplayAndCapture(const std::shared_ptr<MacScreenSource::Impl> &impl, const Preset &preset, int attemptsLeft)
+void findDisplayAndCapture(std::shared_ptr<MacScreenSource::Impl> impl, Preset preset, int attemptsLeft)
 {
   // the first call asks the user for Screen Recording permission
   [SCShareableContent
